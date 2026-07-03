@@ -176,18 +176,18 @@ struct CSwapClient {
         echo ""
 
         cswap --add-account
-        status=$?
+        cswap_exit_code=$?
 
         echo ""
-        if [ $status -eq 0 ]; then
+        if [ $cswap_exit_code -eq 0 ]; then
           echo "Account added. Return to Claude Swap Bar and click Refresh."
         else
-          echo "cswap failed with exit code $status."
+          echo "cswap failed with exit code $cswap_exit_code."
         fi
         echo ""
         echo "Press Return to close this window."
         read -r
-        exit $status
+        exit $cswap_exit_code
         """
 
         try script.write(to: scriptURL, atomically: true, encoding: .utf8)
