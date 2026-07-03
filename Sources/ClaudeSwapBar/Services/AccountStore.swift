@@ -47,6 +47,16 @@ final class AccountStore: ObservableObject {
         }
     }
 
+    func openAddAccountFlow() {
+        do {
+            try client.openAddAccountFlowInTerminal()
+            lastAction = "Opened add account flow"
+            errorMessage = nil
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
     // MARK: - Helpers
 
     private func perform(_ successMessage: String, _ work: @escaping @Sendable () throws -> Void) async {

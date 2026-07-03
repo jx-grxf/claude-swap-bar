@@ -33,6 +33,16 @@ struct MenuContentView: View {
             }
             Spacer()
             Button {
+                store.openAddAccountFlow()
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .buttonStyle(.borderless)
+            .help("Add Account")
+            .disabled(store.isBusy)
+
+            Button {
                 Task { await store.refresh() }
             } label: {
                 Image(systemName: "arrow.clockwise")
@@ -93,9 +103,16 @@ struct MenuContentView: View {
                     .foregroundStyle(.secondary)
                 Text("No managed accounts")
                     .font(.subheadline)
-                Text("Add one with `cswap --add-account`")
+                Text("Add the current Claude account with cswap.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Button {
+                    store.openAddAccountFlow()
+                } label: {
+                    Label("Add Account", systemImage: "plus.circle")
+                }
+                .controlSize(.small)
+                .padding(.top, 4)
             }
         }
         .frame(maxWidth: .infinity)
@@ -118,6 +135,13 @@ struct MenuContentView: View {
             }
 
             HStack(spacing: 8) {
+                Button {
+                    store.openAddAccountFlow()
+                } label: {
+                    Label("Add Account", systemImage: "plus.circle")
+                }
+                .disabled(store.isBusy)
+
                 Button {
                     Task { await store.rotate(strategy: nil) }
                 } label: {

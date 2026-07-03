@@ -8,6 +8,7 @@ struct CSwapClient {
         case binaryNotFound
         case nonZeroExit(code: Int32, stderr: String)
         case decodeFailed(String)
+        case terminalLaunchFailed(String)
 
         var errorDescription: String? {
             switch self {
@@ -18,6 +19,8 @@ struct CSwapClient {
                 return "cswap exited with code \(code)\(detail.isEmpty ? "" : ": \(detail)")"
             case let .decodeFailed(message):
                 return "Could not parse cswap output: \(message)"
+            case let .terminalLaunchFailed(message):
+                return "Could not open Terminal for account setup: \(message)"
             }
         }
     }
@@ -47,6 +50,15 @@ struct CSwapClient {
             args += ["--strategy", strategy.rawValue]
         }
         try runExpectingSuccess(args)
+    }
+
+    func openAddAccountFlowInTerminal() throws {
+        let scriptURL = try makeAddAccountScript()
+        let result = try runProcess(executable: "/usr/bin/open", arguments: ["-a", "Terminal", scriptURL.path])
+        guard result.exitCode == 0 else {
+            let detail = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw CSwapError.terminalLaunchFailed(detail.isEmpty ? "open exited with code \(result.exitCode)" : detail)
+        }
     }
 
     // MARK: - Process plumbing
@@ -120,6 +132,67 @@ struct CSwapClient {
             stderr: String(decoding: errData, as: UTF8.self),
             exitCode: process.terminationStatus
         )
+    }
+
+    private func runProcess(executable: String, arguments: [String]) throws -> CommandResult {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        process.standardOutput = outPipe
+        process.standardError = errPipe
+
+        try process.run()
+
+        let outData = outPipe.fileHandleForReading.readDataToEndOfFile()
+        let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+
+        return CommandResult(
+            stdout: String(decoding: outData, as: UTF8.self),
+            stderr: String(decoding: errData, as: UTF8.self),
+            exitCode: process.terminationStatus
+        )
+    }
+
+    private func makeAddAccountScript() throws -> URL {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ClaudeSwapBar", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let scriptURL = directory.appendingPathComponent("Add Claude Account.command")
+        let script = """
+        #!/bin/zsh
+        export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
+        clear
+        echo "Claude Swap Bar"
+        echo "Add the current Claude Code account to cswap."
+        echo ""
+        echo "If this is not the account you want to add, quit now,"
+        echo "run Claude Code login with the right account, then try again."
+        echo ""
+
+        cswap --add-account
+        status=$?
+
+        echo ""
+        if [ $status -eq 0 ]; then
+          echo "Account added. Return to Claude Swap Bar and click Refresh."
+        else
+          echo "cswap failed with exit code $status."
+        fi
+        echo ""
+        echo "Press Return to close this window."
+        read -r
+        exit $status
+        """
+
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+        return scriptURL
     }
 
     private static func resolveBinaryPath() -> String {

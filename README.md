@@ -10,6 +10,7 @@ one-click menu bar UI with live usage meters.
 - Lists every managed account with org name and active state
 - Live 5h / 7d usage meters (color-coded green → orange → red)
 - One-click switch to any account
+- Add the current Claude Code account from the menu bar
 - Rotate to next, or smart-switch by quota (`best` / `next-available`)
 - Menu-bar-only (no Dock icon)
 
@@ -18,6 +19,19 @@ one-click menu bar UI with live usage meters.
 - macOS 13+
 - `cswap` installed and on PATH (`uv tool install claude-swap`)
 - At least one account added (`cswap --add-account`)
+
+## Add accounts
+
+1. Log in to Claude Code with the Claude account you want to add.
+2. Open Claude Swap Bar from the menu bar.
+3. Click **Add Account**. The app opens Terminal and runs `cswap --add-account`.
+4. Return to Claude Swap Bar and click refresh.
+
+You can also run the same command manually:
+
+```sh
+cswap --add-account
+```
 
 ## Build & run
 
