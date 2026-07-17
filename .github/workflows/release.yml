@@ -15,6 +15,9 @@ permissions:
 jobs:
   release:
     runs-on: macos-15
+    env:
+      HAVE_CERT: ${{ secrets.MACOS_CERT_P12 != '' }}
+      HAVE_ASC: ${{ secrets.ASC_KEY_P8 != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -24,18 +27,71 @@ jobs:
         id: tag
         run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
 
+      - name: Import signing certificate
+        if: env.HAVE_CERT == 'true'
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          rm "$RUNNER_TEMP/cert.p12"
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" \
+            | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"')
+          if [ -z "$IDENTITY" ]; then
+            echo "No Developer ID Application identity found in certificate" >&2
+            exit 1
+          fi
+          echo "SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+
       - name: Build and package
         run: ./build-app.sh
 
-      - name: Zip
-        run: ditto -c -k --keepParent ClaudeSwapBar.app "ClaudeSwapBar-${{ steps.tag.outputs.tag }}-unsigned.zip"
+      - name: Notarize and staple
+        if: env.HAVE_CERT == 'true' && env.HAVE_ASC == 'true'
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          echo "$ASC_KEY_P8" > "$RUNNER_TEMP/asc-key.p8"
+          ditto -c -k --keepParent ClaudeSwapBar.app notarize.zip
+          xcrun notarytool submit notarize.zip \
+            --key "$RUNNER_TEMP/asc-key.p8" \
+            --key-id "$ASC_KEY_ID" \
+            --issuer "$ASC_ISSUER_ID" \
+            --wait
+          rm "$RUNNER_TEMP/asc-key.p8" notarize.zip
+          xcrun stapler staple ClaudeSwapBar.app
+          spctl --assess --type execute --verbose ClaudeSwapBar.app
 
-      # CI has no signing certificate; this artifact is ad-hoc signed. The
-      # canonical signed build is attached to the release from a dev machine.
+      - name: Zip
+        id: zip
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if [ "$HAVE_CERT" = "true" ] && [ "$HAVE_ASC" = "true" ]; then
+            NAME="ClaudeSwapBar-$TAG.zip"
+          elif [ "$HAVE_CERT" = "true" ]; then
+            NAME="ClaudeSwapBar-$TAG-signed-unnotarized.zip"
+          else
+            NAME="ClaudeSwapBar-$TAG-unsigned.zip"
+          fi
+          ditto -c -k --keepParent ClaudeSwapBar.app "$NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
       - name: Create release if missing and upload
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --generate-notes
-          gh release upload "$TAG" "ClaudeSwapBar-$TAG-unsigned.zip" --clobber
+          gh release upload "$TAG" "${{ steps.zip.outputs.name }}" --clobber

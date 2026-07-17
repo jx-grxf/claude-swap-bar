@@ -8,7 +8,10 @@ let package = Package(
         .executableTarget(
             name: "ClaudeSwapBar",
             path: "Sources/ClaudeSwapBar",
-            resources: [.copy("Resources/AppLogo.png")]
+            resources: [
+                .copy("Resources/AppLogo.png"),
+                .copy("Resources/StatusIcon.svg"),
+            ]
         )
     ]
 )
