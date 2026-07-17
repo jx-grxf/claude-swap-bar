@@ -9,7 +9,7 @@ cd "$(dirname "$0")"
 
 APP_NAME="ClaudeSwapBar"
 BUNDLE_ID="me.johannesgrof.claudeswapbar"
-VERSION="1.0.0"
+VERSION="1.0.1"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 
 echo "▶ Building release…"
