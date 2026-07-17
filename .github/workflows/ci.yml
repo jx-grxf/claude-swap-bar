@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: swift build -c release
+      - name: Package app bundle
+        run: ./build-app.sh
+      - name: Verify bundle
+        run: |
+          test -x ClaudeSwapBar.app/Contents/MacOS/ClaudeSwapBar
+          test -f ClaudeSwapBar.app/Contents/Resources/AppIcon.icns

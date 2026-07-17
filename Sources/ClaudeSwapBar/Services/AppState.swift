@@ -14,9 +14,11 @@ final class AppState: ObservableObject {
     @Published var errorMessage: String?
     @Published var lastAction: String?
     @Published var claudeRestartPending = false
+    /// Set when Claude Code is logged in with an account the vault doesn't
+    /// know yet — the menu shows a one-click "Add" banner for it.
+    @Published private(set) var unmanagedLoginEmail: String?
 
     @AppStorage("refreshIntervalMinutes") var refreshIntervalMinutes = 5
-    @AppStorage("didImportFromCSwap") private var didImportFromCSwap = false
 
     private let vault = Vault()
     private let bridge = ClaudeCodeBridge()
@@ -24,12 +26,18 @@ final class AppState: ObservableObject {
     private let usageService = UsageService()
     private var refreshTimer: Timer?
 
+    /// Per-account "do not fetch before" gate. Respected even by forced
+    /// refreshes — the usage endpoint budget (~30/hour/account) is precious.
+    private var backoffUntil: [UUID: Date] = [:]
+    private var failureCounts: [UUID: Int] = [:]
+
     var activeAccount: Account? {
         accounts.first { $0.id == activeAccountID }
     }
 
     init() {
         importFromCSwapIfNeeded()
+        usage = UsageCacheFile.load()
         reload()
         restartUsageTimer()
     }
@@ -41,20 +49,23 @@ final class AppState: ObservableObject {
         detectActiveAccount()
     }
 
-    /// Matches the vault against what Claude Code is logged in as right now.
     private func detectActiveAccount() {
         guard let profile = try? bridge.currentProfileJSON() else {
             activeAccountID = nil
+            unmanagedLoginEmail = nil
             return
         }
-        activeAccountID = accounts.first {
+        let match = accounts.first {
             $0.email.caseInsensitiveCompare(profile.email) == .orderedSame
-        }?.id
+        }
+        activeAccountID = match?.id
+        unmanagedLoginEmail = match == nil ? profile.email : nil
     }
 
     private func importFromCSwapIfNeeded() {
-        guard !didImportFromCSwap else { return }
-        didImportFromCSwap = true
+        let marker = UserDefaults.standard
+        guard !marker.bool(forKey: "didImportFromCSwap") else { return }
+        marker.set(true, forKey: "didImportFromCSwap")
 
         let importer = CSwapImporter()
         guard importer.isAvailable, vault.loadAccounts().isEmpty else { return }
@@ -79,25 +90,29 @@ final class AppState: ObservableObject {
         // ourselves. Inactive accounts are ours to refresh freely.
         let claudeRunning = bridge.isClaudeCodeRunning()
         let activeID = activeAccountID
+        let now = Date()
 
-        let work: [(Account, OAuthCredentials?)] = accounts.map { account in
+        var work: [(Account, OAuthCredentials)] = []
+        for account in accounts {
+            if let gate = backoffUntil[account.id], gate > now { continue }
+            guard force || usage[account.id]?.isStale != false else { continue }
+
             if account.id == activeID, let live = try? bridge.currentCredentials() {
-                // Opportunistically sync Claude Code's rotations back into our vault.
+                // Opportunistically sync Claude Code's rotations into our vault.
                 try? vault.storeCredentials(live, for: account.id)
-                return (account, live)
+                work.append((account, live))
+            } else if let stored = try? vault.credentials(for: account.id) {
+                work.append((account, stored))
+            } else {
+                usageProblems[account.id] = .tokenExpired
             }
-            return (account, try? vault.credentials(for: account.id))
         }
 
         await withTaskGroup(of: (UUID, Result<UsageSnapshot, UsageProblem>).self) { group in
             for (account, storedCredentials) in work {
-                guard force || usage[account.id]?.isStale != false else { continue }
-                guard var credentials = storedCredentials else {
-                    usageProblems[account.id] = .tokenExpired
-                    continue
-                }
                 let isActive = account.id == activeID
                 group.addTask { [vault, oauth, usageService] in
+                    var credentials = storedCredentials
                     do {
                         if credentials.isAccessTokenExpired {
                             if isActive && claudeRunning {
@@ -126,10 +141,35 @@ final class AppState: ObservableObject {
                 case let .success(snapshot):
                     usage[id] = snapshot
                     usageProblems[id] = nil
+                    failureCounts[id] = 0
+                    backoffUntil[id] = nil
                 case let .failure(problem):
+                    // Keep the last good snapshot visible; the row shows the
+                    // problem alongside the (stale) data.
                     usageProblems[id] = problem
+                    scheduleBackoff(for: id, after: problem)
                 }
             }
+        }
+
+        UsageCacheFile.save(usage)
+    }
+
+    private func scheduleBackoff(for id: UUID, after problem: UsageProblem) {
+        let failures = (failureCounts[id] ?? 0) + 1
+        failureCounts[id] = failures
+
+        switch problem {
+        case let .rateLimited(retryAt):
+            // 429: honor Retry-After (capped), else hold off for a full
+            // 5 minutes minimum — the hourly budget is already gone.
+            let holdOff = retryAt?.timeIntervalSinceNow ?? 0
+            backoffUntil[id] = Date().addingTimeInterval(min(max(holdOff, 300), 900))
+        case .tokenExpired, .unauthorized:
+            backoffUntil[id] = Date().addingTimeInterval(300)
+        case .network:
+            let delay = min(60 * pow(2, Double(failures - 1)), 600)
+            backoffUntil[id] = Date().addingTimeInterval(delay)
         }
     }
 
@@ -161,6 +201,7 @@ final class AppState: ObservableObject {
             }
             try bridge.activate(credentials: credentials, profileJSON: account.oauthAccountJSON)
             activeAccountID = account.id
+            unmanagedLoginEmail = nil
             lastAction = "Switched to \(account.displayName)"
             claudeRestartPending = true
             errorMessage = nil
@@ -171,12 +212,13 @@ final class AppState: ObservableObject {
 
     func rotate(smart: Bool) async {
         guard accounts.count > 1 else { return }
-        let candidates = accounts.filter { $0.id != activeAccountID }
 
         let target: Account?
         if smart {
             // Most 5h headroom wins; accounts with unknown usage sort last.
-            target = candidates.max { headroom($0) < headroom($1) }
+            target = accounts
+                .filter { $0.id != activeAccountID }
+                .max { headroom($0) < headroom($1) }
         } else {
             let currentIndex = accounts.firstIndex { $0.id == activeAccountID } ?? 0
             target = accounts[(currentIndex + 1) % accounts.count]
@@ -215,7 +257,7 @@ final class AppState: ObservableObject {
             reload()
             lastAction = "Added \(profile.email)"
             errorMessage = nil
-            Task { await refreshUsage(force: true) }
+            Task { await refreshUsage() }
         } catch {
             errorMessage = friendlyMessage(error)
         }
@@ -226,6 +268,7 @@ final class AppState: ObservableObject {
             try vault.remove(account)
             usage[account.id] = nil
             usageProblems[account.id] = nil
+            backoffUntil[account.id] = nil
             reload()
             lastAction = "Removed \(account.displayName)"
         } catch {
@@ -237,5 +280,28 @@ final class AppState: ObservableObject {
 
     private func friendlyMessage(_ error: Error) -> String {
         (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    }
+}
+
+/// Usage snapshots persisted across launches, so a restart doesn't blank the
+/// meters or trigger an immediate refetch burst against the rate budget.
+private enum UsageCacheFile {
+    static var url: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("ClaudeSwapBar/usage-cache.json")
+    }
+
+    static func load() -> [UUID: UsageSnapshot] {
+        guard let data = try? Data(contentsOf: url) else { return [:] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return (try? decoder.decode([UUID: UsageSnapshot].self, from: data)) ?? [:]
+    }
+
+    static func save(_ cache: [UUID: UsageSnapshot]) {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(cache) else { return }
+        try? data.write(to: url, options: .atomic)
     }
 }

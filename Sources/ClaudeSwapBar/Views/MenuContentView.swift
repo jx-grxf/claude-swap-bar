@@ -8,6 +8,10 @@ struct MenuContentView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
+            if let email = store.unmanagedLoginEmail {
+                newLoginBanner(email)
+                Divider()
+            }
             accountList
             if let error = store.errorMessage {
                 Divider()
@@ -17,7 +21,6 @@ struct MenuContentView: View {
             footer
         }
         .frame(width: 440)
-        .background(.regularMaterial)
         .task {
             store.reload()
             await store.refreshUsage()
@@ -32,9 +35,11 @@ struct MenuContentView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            Image(nsImage: MenuBarIcon.image)
+            Image(nsImage: MenuBarIcon.appLogo)
                 .resizable()
-                .frame(width: 26, height: 26)
+                .interpolation(.high)
+                .frame(width: 30, height: 30)
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
 
             VStack(alignment: .leading, spacing: 1) {
                 Text("Claude Swap")
@@ -70,6 +75,34 @@ struct MenuContentView: View {
         }
         .buttonStyle(.borderless)
         .help(help)
+        .accessibilityLabel(help)
+    }
+
+    // MARK: - New login banner (one-click add)
+
+    private func newLoginBanner(_ email: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "sparkles")
+                .foregroundStyle(Color.accentColor)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("New Claude login detected")
+                    .font(.caption.weight(.semibold))
+                Text(email)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer()
+            Button("Add") {
+                store.addCurrentClaudeAccount()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(Color.accentColor.opacity(0.08))
     }
 
     // MARK: - Account list
@@ -79,10 +112,8 @@ struct MenuContentView: View {
         if store.accounts.isEmpty {
             emptyView
         } else {
-            // A plain VStack for the common case; scrolling only kicks in
-            // when the list genuinely outgrows the popover.
             ScrollView(.vertical) {
-                LazyVStack(spacing: 8) {
+                VStack(spacing: 8) {
                     ForEach(store.accounts) { account in
                         AccountRowView(
                             account: account,
@@ -104,9 +135,12 @@ struct MenuContentView: View {
 
     private var emptyView: some View {
         VStack(spacing: 8) {
-            Image(systemName: "person.crop.circle.badge.plus")
-                .font(.largeTitle)
-                .foregroundStyle(.secondary)
+            Image(nsImage: MenuBarIcon.appLogo)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .opacity(0.9)
             Text("No accounts yet")
                 .font(.headline)
             Text("Add the Claude account you're currently logged in with.")
@@ -119,7 +153,6 @@ struct MenuContentView: View {
                 Label("Add Account", systemImage: "plus.circle.fill")
             }
             .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
             .padding(.top, 4)
         }
         .frame(maxWidth: .infinity)
@@ -142,6 +175,7 @@ struct MenuContentView: View {
                     .foregroundStyle(.tertiary)
             }
             .buttonStyle(.borderless)
+            .accessibilityLabel("Dismiss error")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -192,7 +226,8 @@ struct MenuContentView: View {
                     Image(systemName: "power")
                 }
                 .buttonStyle(.borderless)
-                .help("Quit")
+                .help("Quit Claude Swap Bar")
+                .accessibilityLabel("Quit")
             }
             .font(.caption)
             .controlSize(.small)

@@ -2,35 +2,31 @@ import AppKit
 import SwiftUI
 
 /// Guided add-account flow. Claude's login always happens through Claude Code
-/// itself; this sheet walks through it and then captures the fresh login into
-/// the vault with one click — no Terminal scripts.
+/// itself; this sheet walks through it and captures the fresh login the
+/// moment it appears — no Terminal scripts, no manual refresh.
 struct AddAccountSheet: View {
     @EnvironmentObject private var store: AppState
     @Environment(\.dismiss) private var dismiss
 
-    private var currentLogin: (email: String, alreadyAdded: Bool)? {
-        guard let profile = try? ClaudeCodeBridge().currentProfileJSON() else { return nil }
-        let known = store.accounts.contains {
-            $0.email.caseInsensitiveCompare(profile.email) == .orderedSame
-        }
-        return (profile.email, known)
-    }
+    private let loginPoll = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 10) {
-                Image(systemName: "person.crop.circle.badge.plus")
-                    .font(.title2)
-                    .foregroundStyle(Color.accentColor)
+                Image(nsImage: MenuBarIcon.appLogo)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 28, height: 28)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 Text("Add a Claude Account")
                     .font(.title3.weight(.semibold))
                 Spacer()
             }
 
-            if let login = currentLogin, !login.alreadyAdded {
-                captureCard(email: login.email)
+            if let email = store.unmanagedLoginEmail {
+                captureCard(email: email)
             } else {
-                loginInstructions(alreadyAddedEmail: currentLogin?.email)
+                loginInstructions
             }
 
             HStack {
@@ -41,6 +37,10 @@ struct AddAccountSheet: View {
         }
         .padding(20)
         .frame(width: 400)
+        .onReceive(loginPoll) { _ in
+            // Picks up a fresh `claude /login` without any user action.
+            store.reload()
+        }
     }
 
     private func captureCard(email: String) -> some View {
@@ -67,11 +67,11 @@ struct AddAccountSheet: View {
         .background(RoundedRectangle(cornerRadius: 10).fill(Color.green.opacity(0.08)))
     }
 
-    private func loginInstructions(alreadyAddedEmail: String?) -> some View {
+    private var loginInstructions: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let email = alreadyAddedEmail {
+            if store.activeAccount != nil {
                 Label {
-                    Text("The current Claude Code login (**\(email)**) is already managed.")
+                    Text("The current Claude Code login is already managed.")
                         .font(.callout)
                 } icon: {
                     Image(systemName: "info.circle.fill")
@@ -83,19 +83,26 @@ struct AddAccountSheet: View {
                 .font(.callout.weight(.semibold))
 
             VStack(alignment: .leading, spacing: 8) {
-                instructionRow(1, "Open a terminal and run `claude /login` (or `/login` inside a session).")
+                instructionRow(1, "Open a terminal and run `claude /login`.")
                 instructionRow(2, "Sign in with the account you want to add.")
-                instructionRow(3, "Come back here — the new login is detected automatically.")
+                instructionRow(3, "This sheet detects the new login automatically — one click and it's added.")
             }
 
-            Text("Don't worry about the account you're currently using — it's safely stored and you can switch back any time.")
+            Text("Your current account stays safely stored — switch back any time.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Button {
-                openTerminalForLogin()
-            } label: {
-                Label("Open Terminal", systemImage: "terminal")
+            HStack(spacing: 8) {
+                Button {
+                    NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"))
+                } label: {
+                    Label("Open Terminal", systemImage: "terminal")
+                }
+                ProgressView()
+                    .controlSize(.small)
+                Text("waiting for a new login…")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
         }
     }
@@ -110,9 +117,5 @@ struct AddAccountSheet: View {
                 .font(.callout)
                 .fixedSize(horizontal: false, vertical: true)
         }
-    }
-
-    private func openTerminalForLogin() {
-        NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"))
     }
 }

@@ -20,7 +20,7 @@ struct ClaudeSwapBarApp: App {
 
     private var menuBarLabel: some View {
         HStack(spacing: 4) {
-            Image(nsImage: MenuBarIcon.image)
+            Image(nsImage: MenuBarIcon.statusIcon)
             if let text = menuBarText {
                 Text(text)
                     .font(.system(size: 11, weight: .medium).monospacedDigit())

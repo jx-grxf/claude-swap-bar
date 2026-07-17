@@ -105,8 +105,8 @@ struct AccountRowView: View {
 
     @ViewBuilder
     private var usageSection: some View {
-        if let usage {
-            VStack(spacing: 5) {
+        VStack(alignment: .leading, spacing: 5) {
+            if let usage {
                 if let five = usage.fiveHour {
                     UsageBarView(label: "5h", window: five)
                 }
@@ -117,20 +117,24 @@ struct AccountRowView: View {
                     UsageBarView(label: scoped.name, window: scoped.window)
                 }
             }
-        } else if let problem {
-            HStack(spacing: 5) {
-                Image(systemName: "wifi.exclamationmark")
-                    .font(.caption2)
-                Text(problem.shortText)
-                    .font(.caption2)
-            }
-            .foregroundStyle(.tertiary)
-        } else {
-            HStack(spacing: 5) {
-                ProgressView().controlSize(.mini)
-                Text("loading usage…")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+
+            // Stale data stays visible; the note below explains why it isn't
+            // updating right now.
+            if let problem {
+                HStack(spacing: 5) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.caption2)
+                    Text(usage == nil ? problem.shortText : "showing cached data — \(problem.shortText)")
+                        .font(.caption2)
+                }
+                .foregroundStyle(.tertiary)
+            } else if usage == nil {
+                HStack(spacing: 5) {
+                    ProgressView().controlSize(.mini)
+                    Text("loading usage…")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
             }
         }
     }

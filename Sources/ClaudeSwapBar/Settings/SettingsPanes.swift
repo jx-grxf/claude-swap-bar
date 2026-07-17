@@ -94,11 +94,48 @@ struct MenuBarSettingsPane: View {
 }
 
 struct AboutSettingsPane: View {
+    private static let repoURL = URL(string: "https://github.com/jx-grxf/claude-swap-bar")!
+
     var body: some View {
         Form {
             Section {
-                LabeledContent("App", value: "Claude Swap Bar")
-                LabeledContent("Version", value: AppVersion.displayString)
+                VStack(spacing: 10) {
+                    Image(nsImage: MenuBarIcon.appLogo)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 84, height: 84)
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .shadow(color: .black.opacity(0.2), radius: 8, y: 3)
+
+                    Text("Claude Swap Bar")
+                        .font(.title2.weight(.semibold))
+                    Text(AppVersion.displayString)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+
+                    Text("Native multi-account switching and usage tracking for Claude Code.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+
+                    HStack(spacing: 10) {
+                        Link(destination: Self.repoURL) {
+                            Label("GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
+                        }
+                        Link(destination: Self.repoURL.appendingPathComponent("issues")) {
+                            Label("Report an Issue", systemImage: "ladybug")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+            }
+
+            Section {
+                LabeledContent("Author", value: "Johannes Grof")
+                LabeledContent("License", value: "MIT")
             }
 
             Section("How switching works") {

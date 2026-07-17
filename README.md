@@ -4,11 +4,12 @@
 
 **Native macOS menu bar app for switching between Claude Code accounts.**
 
+[![CI](https://github.com/jx-grxf/claude-swap-bar/actions/workflows/ci.yml/badge.svg)](https://github.com/jx-grxf/claude-swap-bar/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/jx-grxf/claude-swap-bar?color=informational)](https://github.com/jx-grxf/claude-swap-bar/releases/latest)
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-blue?logo=apple)
 ![Swift](https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white)
-![UI](https://img.shields.io/badge/UI-SwiftUI-524520?logo=swift&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
-![Version](https://img.shields.io/badge/version-1.0.0-informational)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 
 *One click to switch accounts. Live usage meters. Zero external tools.*
 
@@ -30,15 +31,17 @@ Claude Swap Bar manages multiple Claude Code logins and switches between them fr
 
 ## Install
 
+Grab the signed app from the [latest release](https://github.com/jx-grxf/claude-swap-bar/releases/latest), unzip, and drop it into `/Applications`.
+
+Or build from source (macOS 14+, Xcode command line tools):
+
 ```sh
-git clone <this repo>
-cd CSwapBar
+git clone https://github.com/jx-grxf/claude-swap-bar.git
+cd claude-swap-bar
 ./build-app.sh
 cp -R ClaudeSwapBar.app /Applications/
 open /Applications/ClaudeSwapBar.app
 ```
-
-Requires macOS 14+ and Xcode command line tools.
 
 ## Adding accounts
 
