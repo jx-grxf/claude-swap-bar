@@ -1,37 +1,48 @@
 import Foundation
 
-/// Mirrors the JSON emitted by `cswap --list --json`.
-struct AccountList: Codable {
-    let schemaVersion: Int
-    let activeAccountNumber: Int?
-    let accounts: [Account]
-}
+/// A managed Claude account. Profile data lives in the vault JSON; OAuth
+/// tokens live in the macOS Keychain, keyed by `id`.
+struct Account: Codable, Identifiable, Equatable {
+    let id: UUID
+    var email: String
+    var organizationName: String?
+    var accountUuid: String?
+    var subscriptionType: String?
+    var addedAt: Date
 
-struct Account: Codable, Identifiable {
-    let number: Int
-    let email: String
-    let organizationName: String?
-    let isOrganization: Bool?
-    let active: Bool
-    let usageStatus: String
-    let usage: Usage?
+    /// Snapshot of the `oauthAccount` object from ~/.claude.json captured when
+    /// the account was added; restored verbatim on switch so Claude Code sees
+    /// a consistent profile.
+    var oauthAccountJSON: String?
 
-    var id: Int { number }
-
-    /// Short display name: the local part of the email, capitalised.
-    var shortName: String {
+    var displayName: String {
         email.split(separator: "@").first.map(String.init) ?? email
+    }
+
+    var planLabel: String? {
+        switch subscriptionType {
+        case "max": return "Max"
+        case "pro": return "Pro"
+        case "enterprise": return "Enterprise"
+        case "team": return "Team"
+        default: return subscriptionType?.capitalized
+        }
     }
 }
 
-struct Usage: Codable {
-    let fiveHour: UsageWindow?
-    let sevenDay: UsageWindow?
-}
+/// OAuth credential set, mirroring the `claudeAiOauth` payload Claude Code
+/// stores in the Keychain.
+struct OAuthCredentials: Codable, Equatable {
+    var accessToken: String
+    var refreshToken: String
+    /// Milliseconds since epoch.
+    var expiresAt: Double
+    var refreshTokenExpiresAt: Double?
+    var scopes: [String]
+    var subscriptionType: String?
+    var rateLimitTier: String?
 
-struct UsageWindow: Codable {
-    let pct: Double
-    let resetsAt: String?
-    let countdown: String?
-    let clock: String?
+    var isAccessTokenExpired: Bool {
+        Date(timeIntervalSince1970: expiresAt / 1000) <= Date().addingTimeInterval(120)
+    }
 }

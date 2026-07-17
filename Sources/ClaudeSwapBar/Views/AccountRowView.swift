@@ -2,94 +2,136 @@ import SwiftUI
 
 struct AccountRowView: View {
     let account: Account
+    let isActive: Bool
+    let usage: UsageSnapshot?
+    let problem: UsageProblem?
     let isBusy: Bool
     let onSwitch: () -> Void
+    let onRemove: () -> Void
 
     @State private var isHovering = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 10) {
-                numberBadge
+        Button(action: { if !isActive && !isBusy { onSwitch() } }) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center, spacing: 10) {
+                    avatar
 
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(account.email)
-                        .font(.system(size: 13, weight: .semibold))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    if let org = account.organizationName {
-                        Text(org)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 6) {
+                            Text(account.email)
+                                .font(.system(size: 13, weight: .semibold))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            if let plan = account.planLabel {
+                                Text(plan)
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1.5)
+                                    .background(Capsule().fill(Color.accentColor.opacity(0.15)))
+                                    .foregroundStyle(Color.accentColor)
+                            }
+                        }
+                        if let org = account.organizationName {
+                            Text(org)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
                     }
+
+                    Spacer(minLength: 6)
+
+                    trailing
                 }
 
-                Spacer(minLength: 6)
-
-                trailing
+                usageSection
             }
-
-            if let usage = account.usage {
-                VStack(spacing: 6) {
-                    if let five = usage.fiveHour {
-                        UsageBarView(label: "5h", window: five)
-                    }
-                    if let seven = usage.sevenDay {
-                        UsageBarView(label: "7d", window: seven)
-                    }
-                }
-                .padding(.leading, 2)
-            } else if account.usageStatus != "ok" {
-                Text("usage unavailable")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .padding(.leading, 2)
-            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
-        .padding(10)
+        .buttonStyle(.plain)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(account.active ? Color.accentColor.opacity(0.12) : Color.primary.opacity(isHovering ? 0.06 : 0.0))
+                .fill(rowBackground)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(account.active ? Color.accentColor.opacity(0.35) : .clear, lineWidth: 1)
+                .strokeBorder(isActive ? Color.accentColor.opacity(0.4) : .clear, lineWidth: 1)
         )
-        .contentShape(Rectangle())
         .onHover { isHovering = $0 }
-        .animation(.easeInOut(duration: 0.12), value: isHovering)
+        .animation(.easeInOut(duration: 0.1), value: isHovering)
+        .contextMenu {
+            if !isActive {
+                Button("Switch to this account", action: onSwitch)
+            }
+            Button("Remove from Claude Swap", role: .destructive, action: onRemove)
+        }
     }
 
-    private var numberBadge: some View {
+    private var rowBackground: Color {
+        if isActive { return Color.accentColor.opacity(0.10) }
+        return Color.primary.opacity(isHovering ? 0.07 : 0.035)
+    }
+
+    private var avatar: some View {
         ZStack {
             Circle()
-                .fill(account.active ? Color.accentColor : Color.secondary.opacity(0.25))
-            Text("\(account.number)")
-                .font(.system(size: 12, weight: .bold, design: .rounded))
-                .foregroundStyle(account.active ? Color.white : Color.primary)
+                .fill(isActive ? Color.accentColor : Color.secondary.opacity(0.22))
+            Text(String(account.displayName.prefix(1)).uppercased())
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .foregroundStyle(isActive ? Color.white : Color.primary)
         }
-        .frame(width: 24, height: 24)
+        .frame(width: 28, height: 28)
     }
 
     @ViewBuilder
     private var trailing: some View {
-        if account.active {
+        if isActive {
             HStack(spacing: 4) {
-                Image(systemName: "checkmark.circle.fill")
+                Circle().fill(Color.green).frame(width: 7, height: 7)
                 Text("Active")
             }
             .font(.caption.weight(.semibold))
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(.secondary)
         } else if isHovering {
-            Button(action: onSwitch) {
-                Text("Switch")
-                    .font(.caption.weight(.semibold))
+            Text("Switch")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+        }
+    }
+
+    @ViewBuilder
+    private var usageSection: some View {
+        if let usage {
+            VStack(spacing: 5) {
+                if let five = usage.fiveHour {
+                    UsageBarView(label: "5h", window: five)
+                }
+                if let seven = usage.sevenDay {
+                    UsageBarView(label: "7d", window: seven)
+                }
+                ForEach(usage.scoped, id: \.name) { scoped in
+                    UsageBarView(label: scoped.name, window: scoped.window)
+                }
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .disabled(isBusy)
+        } else if let problem {
+            HStack(spacing: 5) {
+                Image(systemName: "wifi.exclamationmark")
+                    .font(.caption2)
+                Text(problem.shortText)
+                    .font(.caption2)
+            }
+            .foregroundStyle(.tertiary)
+        } else {
+            HStack(spacing: 5) {
+                ProgressView().controlSize(.mini)
+                Text("loading usage…")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
         }
     }
 }

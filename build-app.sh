@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 
 APP_NAME="ClaudeSwapBar"
 BUNDLE_ID="me.johannesgrof.claudeswapbar"
-VERSION="0.1.0"
+VERSION="1.0.0"
 
 echo "▶ Building release…"
 swift build -c release
@@ -30,7 +30,7 @@ cat > "${CONTENTS}/Info.plist" <<PLIST
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>${VERSION}</string>
     <key>CFBundleVersion</key><string>${VERSION}</string>
-    <key>LSMinimumSystemVersion</key><string>13.0</string>
+    <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>
 </dict>
