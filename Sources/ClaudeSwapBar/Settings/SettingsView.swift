@@ -65,7 +65,6 @@ struct SettingsView: View {
                     .listRowSeparator(.hidden)
             }
             .listStyle(.sidebar)
-            .scrollEdgeEffectStyleSoftIfAvailable()
             .frame(width: 200)
             .navigationSplitViewColumnWidth(min: 200, ideal: 200, max: 200)
             .toolbar(removing: .sidebarToggle)
@@ -83,16 +82,5 @@ struct SettingsView: View {
         .navigationTitle("Settings")
         .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 660, minHeight: 440)
-    }
-}
-
-extension View {
-    @ViewBuilder
-    func scrollEdgeEffectStyleSoftIfAvailable() -> some View {
-        if #available(macOS 26.0, *) {
-            scrollEdgeEffectStyle(.soft, for: .all)
-        } else {
-            self
-        }
     }
 }
