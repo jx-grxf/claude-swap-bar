@@ -8,12 +8,18 @@
 [![Release](https://img.shields.io/github/v/release/jx-grxf/claude-swap-bar?color=informational)](https://github.com/jx-grxf/claude-swap-bar/releases/latest)
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-blue?logo=apple)
 ![Swift](https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white)
-![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
+[![Updates: Sparkle](https://img.shields.io/badge/updates-Sparkle-5E5CE6)](https://sparkle-project.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 
 *One click to switch accounts. Live usage meters. Zero external tools.*
 
 </div>
+
+<p align="center">
+  <img src="docs/images/claude-swap-bar-showcase.png" alt="Claude Swap Bar showing multiple Claude accounts and their live usage limits" width="900">
+</p>
+
+<p align="center"><em>Switch accounts and compare live quota windows without leaving the menu bar.</em></p>
 
 ---
 
@@ -27,6 +33,7 @@ Claude Swap Bar manages multiple Claude Code logins and switches between them fr
 - **Rotate & Best Quota** — cycle to the next account, or jump straight to the one with the most 5h headroom.
 - **Guided add-account flow** — the app detects new Claude Code logins and captures them with one click.
 - **Settings** — refresh interval, launch at login, menu bar usage display.
+- **Secure automatic updates** — signed Sparkle updates with Stable and Beta channels.
 - **Automatic migration** — existing [claude-swap](https://github.com/realiti4/claude-swap) (`cswap`) accounts are imported on first launch, credentials included. No re-login.
 
 ## Install

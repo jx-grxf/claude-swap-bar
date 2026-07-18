@@ -2,7 +2,7 @@
 
 ## Project
 
-Claude Swap Bar is a native macOS 14+ SwiftUI menu bar app for managing and switching Claude Code accounts. It is a Swift Package Manager executable with no third-party dependencies.
+Claude Swap Bar is a native macOS 14+ SwiftUI menu bar app for managing and switching Claude Code accounts. It is a Swift Package Manager executable. Sparkle is the only third-party dependency and must remain pinned exactly in both `Package.swift` and `Package.resolved`.
 
 The app is intentionally menu-bar-only (`MenuBarExtra`, `LSUIElement`, accessory activation policy). A successful launch shows a menu bar item; it does not create a Dock icon or a normal main window.
 
@@ -47,12 +47,15 @@ SwiftPM resources are flattened into `ClaudeSwapBar.app/Contents/Resources` by `
 
 - `Sources/ClaudeSwapBar/ClaudeSwapBarApp.swift`: app entry point and menu bar scene.
 - `Sources/ClaudeSwapBar/Services`: account vault, Keychain, Claude Code bridge, OAuth, and usage logic.
+- `Sources/ClaudeSwapBar/Services/UpdateService.swift`: Sparkle controller and Stable/Beta channel routing.
 - `Sources/ClaudeSwapBar/Views`: menu bar content and account interactions.
 - `Sources/ClaudeSwapBar/Settings`: settings UI and activation-policy handling.
 - `build-app.sh`: release bundle construction and signing.
 - `script/build_and_run.sh`: canonical local build, launch, debug, and verification entrypoint.
 - `.github/workflows`: CI and release automation.
 - `release-notes`: versioned GitHub Release descriptions.
+- `script/create_sparkle_assets.sh`: signed update ZIP and appcast generation.
+- `script/verify_release_artifacts.sh`: signing, notarization, appcast, and metadata gates.
 
 ## Release process
 
@@ -66,13 +69,24 @@ The filename must exactly match the release tag. Write concise user-facing secti
 
 Before tagging a release:
 
-1. Update `VERSION` in `build-app.sh` to `X.Y.Z`.
+1. Update the root `VERSION` file to `X.Y.Z` or `X.Y.Z-beta.N`.
 2. Create and review `release-notes/vX.Y.Z.md`.
 3. Run the build, launch, and code-signing verification commands above.
 4. Commit all release inputs.
 5. Create an SSH-signed annotated `vX.Y.Z` tag and push it.
 
-The release workflow fails when the matching notes file is absent or empty. It uses that file for both newly created releases and reruns that update an existing release, then uploads the signed/notarized ZIP.
+The release workflow fails when the matching notes file is absent or empty. It uses that file for both newly created releases and reruns that update an existing release, then uploads the signed/notarized ZIP, signed `appcast.xml`, and checksums.
+
+Stable tags use `vX.Y.Z` and publish the appcast on the latest GitHub Release. Beta tags use `vX.Y.Z-beta.N`, are marked as prereleases, and also update the moving `beta` release feed. Stable appcast items have no Sparkle channel tag; beta items use `sparkle:channel=beta`.
+
+Required GitHub configuration:
+
+- `CSWAPBAR_SPARKLE_PRIVATE_KEY` secret: Ed25519 private update-signing key.
+- `CSWAPBAR_SPARKLE_PUBLIC_KEY` variable: matching public key embedded in the app.
+- `MACOS_CERT_P12` and `MACOS_CERT_PASSWORD`: Developer ID certificate.
+- `ASC_KEY_P8`, `ASC_KEY_ID`, and `ASC_ISSUER_ID`: Apple notarization credentials.
+
+Never reuse or rotate the Sparkle key casually. Existing installations trust the public key embedded in their app; losing the matching private key breaks the automatic update chain.
 
 ## Security and data handling
 
