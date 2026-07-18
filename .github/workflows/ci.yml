@@ -9,9 +9,11 @@ jobs:
   build:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Build
-        run: swift build -c release
+        run: swift build -c release --disable-automatic-resolution
+      - name: Verify release metadata
+        run: ./script/verify_release_metadata.sh
       - name: Package app bundle
         run: ./build-app.sh
       - name: Verify bundle
@@ -20,6 +22,9 @@ jobs:
           test -f ClaudeSwapBar.app/Contents/Resources/AppIcon.icns
           test -f ClaudeSwapBar.app/Contents/Resources/AppLogo.png
           test -f ClaudeSwapBar.app/Contents/Resources/StatusIcon.svg
+          test -d ClaudeSwapBar.app/Contents/Frameworks/Sparkle.framework
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' ClaudeSwapBar.app/Contents/Info.plist)" = "https://github.com/jx-grxf/claude-swap-bar/releases/latest/download/appcast.xml"
+          test -n "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' ClaudeSwapBar.app/Contents/Info.plist)"
           codesign --verify --deep --strict ClaudeSwapBar.app
           open -n ClaudeSwapBar.app
           sleep 2
