@@ -24,10 +24,14 @@ rm -rf "${APP}"
 mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Resources"
 cp "${BIN}" "${CONTENTS}/MacOS/${APP_NAME}"
 
-# SwiftPM resource bundle (app logo etc.) — Bundle.module resolves it from
-# the app's Resources directory.
+# Flatten SwiftPM resources into the standard macOS app resource directory.
+# MenuBarIcon checks Bundle.main first and falls back to Bundle.module when the
+# executable is launched directly during SwiftPM development.
 if [ -d "${RESOURCE_BUNDLE}" ]; then
-  cp -R "${RESOURCE_BUNDLE}" "${CONTENTS}/Resources/"
+  cp -R "${RESOURCE_BUNDLE}/." "${CONTENTS}/Resources/"
+else
+  echo "Missing SwiftPM resource bundle: ${RESOURCE_BUNDLE}" >&2
+  exit 1
 fi
 
 cp Resources/AppIcon.icns "${CONTENTS}/Resources/AppIcon.icns"
