@@ -23,6 +23,7 @@ final class UpdateService: NSObject {
 
     private let controller: SPUStandardUpdaterController
     private let updaterDelegate: UpdaterDelegate
+    private let userDriverDelegate: UserDriverDelegate
 
     var channel: Channel {
         didSet {
@@ -47,12 +48,14 @@ final class UpdateService: NSObject {
         let storedChannel = UserDefaults.standard.string(forKey: Keys.channel)
             .flatMap(Channel.init(rawValue:)) ?? .stable
         let delegate = UpdaterDelegate(channel: storedChannel)
+        let userDelegate = UserDriverDelegate()
         self.channel = storedChannel
         self.updaterDelegate = delegate
+        self.userDriverDelegate = userDelegate
         self.controller = SPUStandardUpdaterController(
             startingUpdater: true,
             updaterDelegate: delegate,
-            userDriverDelegate: nil
+            userDriverDelegate: userDelegate
         )
         super.init()
 
@@ -61,6 +64,9 @@ final class UpdateService: NSObject {
             Task { @MainActor in self?.lastCheckDate = date }
         }
         delegate.onFoundUpdate = { [weak self] version in
+            Task { @MainActor in self?.availableUpdateVersion = version }
+        }
+        userDelegate.onGentleUpdate = { [weak self] version in
             Task { @MainActor in self?.availableUpdateVersion = version }
         }
         delegate.onUserChoice = { [weak self] keepsReminder in
@@ -79,6 +85,32 @@ final class UpdateService: NSObject {
 
     private enum Keys {
         static let channel = "updates.channel"
+    }
+}
+
+/// A scheduled check must not steal focus from whatever the user is doing.
+/// CSwapBar surfaces the available update through its menu bar button; clicking
+/// that button presents Sparkle's standard update window in focus.
+private final class UserDriverDelegate: NSObject, SPUStandardUserDriverDelegate {
+    var onGentleUpdate: ((String) -> Void)?
+
+    var supportsGentleScheduledUpdateReminders: Bool { true }
+
+    func standardUserDriverShouldHandleShowingScheduledUpdate(
+        _ update: SUAppcastItem,
+        andInImmediateFocus immediateFocus: Bool
+    ) -> Bool {
+        immediateFocus
+    }
+
+    func standardUserDriverWillHandleShowingUpdate(
+        _ handleShowingUpdate: Bool,
+        forUpdate update: SUAppcastItem,
+        state: SPUUserUpdateState
+    ) {
+        if !handleShowingUpdate {
+            onGentleUpdate?(update.displayVersionString)
+        }
     }
 }
 
