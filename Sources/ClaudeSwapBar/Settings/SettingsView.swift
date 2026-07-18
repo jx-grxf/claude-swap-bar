@@ -4,6 +4,7 @@ import SwiftUI
 enum SettingsTab: String, CaseIterable, Identifiable {
     case general
     case menuBar
+    case updates
     case about
 
     var id: Self { self }
@@ -12,6 +13,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .general: "General"
         case .menuBar: "Menu Bar"
+        case .updates: "Updates"
         case .about: "About"
         }
     }
@@ -20,6 +22,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .general: "gearshape"
         case .menuBar: "menubar.rectangle"
+        case .updates: "arrow.triangle.2.circlepath"
         case .about: "info.circle"
         }
     }
@@ -73,6 +76,7 @@ struct SettingsView: View {
                 switch activeTab {
                 case .general: GeneralSettingsPane()
                 case .menuBar: MenuBarSettingsPane()
+                case .updates: UpdateSettingsPane()
                 case .about: AboutSettingsPane()
                 }
             }

@@ -3,6 +3,7 @@ import SwiftUI
 struct MenuContentView: View {
     @EnvironmentObject private var store: AppState
     @State private var showAddSheet = false
+    @State private var updates = UpdateService.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -219,6 +220,22 @@ struct MenuContentView: View {
                     ProgressView()
                         .controlSize(.small)
                 }
+
+                Button {
+                    updates.checkForUpdates()
+                } label: {
+                    Image(systemName: updates.isUpdateAvailable
+                        ? "arrow.down.circle.fill"
+                        : "arrow.triangle.2.circlepath")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(updates.isUpdateAvailable ? Color.accentColor : Color.primary)
+                .help(updates.isUpdateAvailable
+                    ? "Install Available Update"
+                    : "Check for Updates")
+                .accessibilityLabel(updates.isUpdateAvailable
+                    ? "Update available"
+                    : "Check for Updates")
 
                 Button {
                     NSApplication.shared.terminate(nil)

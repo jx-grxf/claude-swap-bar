@@ -93,6 +93,61 @@ struct MenuBarSettingsPane: View {
     }
 }
 
+struct UpdateSettingsPane: View {
+    @State private var updates = UpdateService.shared
+
+    var body: some View {
+        @Bindable var updates = updates
+
+        Form {
+            Section("Version") {
+                LabeledContent("Installed", value: AppVersion.displayString)
+
+                if let availableVersion = updates.availableUpdateVersion {
+                    LabeledContent("Available") {
+                        Label(availableVersion, systemImage: "arrow.down.circle.fill")
+                            .foregroundStyle(.tint)
+                    }
+                }
+            }
+
+            Section("Channel") {
+                Picker("Update channel", selection: $updates.channel) {
+                    ForEach(UpdateService.Channel.allCases) { channel in
+                        Text(channel.displayName).tag(channel)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Text("Stable receives production releases. Beta follows the separate preview feed; switch back to Stable whenever you want production releases only.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Automatic Checks") {
+                Toggle("Check for updates automatically", isOn: $updates.automaticallyChecksForUpdates)
+                    .toggleStyle(.switch)
+
+                if let date = updates.lastCheckDate {
+                    LabeledContent(
+                        "Last check",
+                        value: date.formatted(date: .abbreviated, time: .shortened)
+                    )
+                }
+            }
+
+            Section {
+                Button("Check Now") {
+                    updates.checkForUpdates()
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .contentMargins(.top, 8, for: .scrollContent)
+    }
+}
+
 struct AboutSettingsPane: View {
     private static let repoURL = URL(string: "https://github.com/jx-grxf/claude-swap-bar")!
 

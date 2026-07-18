@@ -6,101 +6,225 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to build a release artifact for (e.g. v1.0.0)"
+        description: "Existing signed tag to rebuild (for example v1.1.0)"
         required: true
+        type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
   release:
     runs-on: macos-15
-    env:
-      HAVE_CERT: ${{ secrets.MACOS_CERT_P12 != '' }}
-      HAVE_ASC: ${{ secrets.ASC_KEY_P8 != '' }}
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout signed tag
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
 
-      - name: Resolve tag
-        id: tag
-        run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+      - name: Resolve release identity
+        id: release
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${INPUT_TAG:-$GITHUB_REF_NAME}"
+          version="${tag#v}"
+          build="$GITHUB_RUN_NUMBER"
+          [[ "$tag" == v* ]] || { echo "error: release tag must start with v" >&2; exit 1; }
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]] || {
+            echo "error: unsupported release version $version" >&2
+            exit 1
+          }
+          if [[ "$version" == *-beta.* ]]; then channel="beta"; else channel="stable"; fi
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "build=$build"
+            echo "channel=$channel"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Import signing certificate
-        if: env.HAVE_CERT == 'true'
+      - name: Verify signed tag and release metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          CSWAPBAR_RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          CSWAPBAR_UPDATE_CHANNEL: ${{ steps.release.outputs.channel }}
+        run: |
+          set -euo pipefail
+          ref_json="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}")"
+          [[ "$(jq -r '.object.type' <<< "$ref_json")" == "tag" ]] || {
+            echo "error: $RELEASE_TAG must be an annotated tag" >&2
+            exit 1
+          }
+          tag_object="$(jq -r '.object.sha' <<< "$ref_json")"
+          tag_json="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${tag_object}")"
+          [[ "$(jq -r '.verification.verified' <<< "$tag_json")" == "true" ]] || {
+            echo "error: GitHub did not verify the signature on $RELEASE_TAG" >&2
+            exit 1
+          }
+          commit="$(jq -r '.object.sha' <<< "$tag_json")"
+          git fetch origin main
+          git merge-base --is-ancestor "$commit" origin/main || {
+            echo "error: tagged commit is not reachable from main" >&2
+            exit 1
+          }
+          ./script/verify_release_metadata.sh
+
+      - name: Verify release secrets
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          CSWAPBAR_SPARKLE_PRIVATE_KEY: ${{ secrets.CSWAPBAR_SPARKLE_PRIVATE_KEY }}
+          CSWAPBAR_SPARKLE_PUBLIC_KEY: ${{ vars.CSWAPBAR_SPARKLE_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          for name in MACOS_CERT_P12 MACOS_CERT_PASSWORD ASC_KEY_P8 ASC_KEY_ID \
+            ASC_ISSUER_ID CSWAPBAR_SPARKLE_PRIVATE_KEY CSWAPBAR_SPARKLE_PUBLIC_KEY; do
+            [[ -n "${!name:-}" ]] || { echo "error: missing $name" >&2; exit 1; }
+          done
+
+      - name: Import Developer ID certificate
         env:
           MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
           MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
         run: |
-          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
-          KEYCHAIN_PASSWORD="$(uuidgen)"
-          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/build.keychain-db"
+          keychain_password="$(uuidgen)"
+          printf '%s' "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" \
             -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: \
-            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
-          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
-          rm "$RUNNER_TEMP/cert.p12"
-          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" \
-            | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"')
-          if [ -z "$IDENTITY" ]; then
-            echo "No Developer ID Application identity found in certificate" >&2
-            exit 1
-          fi
-          echo "SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+            -k "$keychain_password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          unlink "$RUNNER_TEMP/cert.p12"
+          identity="$(security find-identity -v -p codesigning "$keychain" \
+            | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"')"
+          [[ -n "$identity" ]] || { echo "error: Developer ID identity not found" >&2; exit 1; }
+          echo "SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
 
-      - name: Build and package
-        run: ./build-app.sh
+      - name: Build and sign app
+        env:
+          APP_VERSION: ${{ steps.release.outputs.version }}
+          BUILD_NUMBER: ${{ steps.release.outputs.build }}
+          SPARKLE_PUBLIC_KEY: ${{ vars.CSWAPBAR_SPARKLE_PUBLIC_KEY }}
+        run: |
+          ./build-app.sh
+          mkdir -p dist
+          cp -R ClaudeSwapBar.app dist/ClaudeSwapBar.app
 
-      - name: Notarize and staple
-        if: env.HAVE_CERT == 'true' && env.HAVE_ASC == 'true'
+      - name: Notarize and staple app
         env:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
-          echo "$ASC_KEY_P8" > "$RUNNER_TEMP/asc-key.p8"
-          ditto -c -k --keepParent ClaudeSwapBar.app notarize.zip
-          xcrun notarytool submit notarize.zip \
+          set -euo pipefail
+          printf '%s' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc-key.p8"
+          ditto -c -k --keepParent dist/ClaudeSwapBar.app "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
             --key "$RUNNER_TEMP/asc-key.p8" \
             --key-id "$ASC_KEY_ID" \
             --issuer "$ASC_ISSUER_ID" \
             --wait
-          rm "$RUNNER_TEMP/asc-key.p8" notarize.zip
-          xcrun stapler staple ClaudeSwapBar.app
-          spctl --assess --type execute --verbose ClaudeSwapBar.app
+          unlink "$RUNNER_TEMP/asc-key.p8"
+          unlink "$RUNNER_TEMP/notarize.zip"
+          xcrun stapler staple dist/ClaudeSwapBar.app
+          spctl --assess --type execute --verbose dist/ClaudeSwapBar.app
 
-      - name: Zip
-        id: zip
-        run: |
-          TAG="${{ steps.tag.outputs.tag }}"
-          if [ "$HAVE_CERT" = "true" ] && [ "$HAVE_ASC" = "true" ]; then
-            NAME="ClaudeSwapBar-$TAG.zip"
-          elif [ "$HAVE_CERT" = "true" ]; then
-            NAME="ClaudeSwapBar-$TAG-signed-unnotarized.zip"
-          else
-            NAME="ClaudeSwapBar-$TAG-unsigned.zip"
-          fi
-          ditto -c -k --keepParent ClaudeSwapBar.app "$NAME"
-          echo "name=$NAME" >> "$GITHUB_OUTPUT"
-
-      - name: Create release if missing and upload
+      - name: Build signed Sparkle feed
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSWAPBAR_VERSION: ${{ steps.release.outputs.version }}
+          CSWAPBAR_BUILD: ${{ steps.release.outputs.build }}
+          CSWAPBAR_UPDATE_CHANNEL: ${{ steps.release.outputs.channel }}
+          CSWAPBAR_SPARKLE_PRIVATE_KEY: ${{ secrets.CSWAPBAR_SPARKLE_PRIVATE_KEY }}
+          CSWAPBAR_SPARKLE_DOWNLOAD_PREFIX: https://github.com/${{ github.repository }}/releases/download/${{ steps.release.outputs.tag }}
+        run: ./script/create_sparkle_assets.sh
+
+      - name: Verify release artifacts
+        env:
+          CSWAPBAR_VERSION: ${{ steps.release.outputs.version }}
+          CSWAPBAR_BUILD: ${{ steps.release.outputs.build }}
+          CSWAPBAR_UPDATE_CHANNEL: ${{ steps.release.outputs.channel }}
+          CSWAPBAR_RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          CSWAPBAR_SPARKLE_PUBLIC_KEY: ${{ vars.CSWAPBAR_SPARKLE_PUBLIC_KEY }}
+          CSWAPBAR_NOTARY_ENABLED: "true"
+        run: ./script/verify_release_artifacts.sh
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_CHANNEL: ${{ steps.release.outputs.channel }}
         run: |
-          TAG="${{ steps.tag.outputs.tag }}"
-          NOTES_FILE="release-notes/$TAG.md"
-          if [ ! -s "$NOTES_FILE" ]; then
-            echo "Missing release notes: $NOTES_FILE" >&2
-            exit 1
-          fi
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --title "$TAG" --notes-file "$NOTES_FILE"
+          set -euo pipefail
+          notes="release-notes/$RELEASE_TAG.md"
+          assets=(
+            "dist/sparkle/ClaudeSwapBar-${RELEASE_VERSION}.zip#ClaudeSwapBar-${RELEASE_VERSION}.zip"
+            "dist/sparkle/appcast.xml#appcast.xml"
+            "dist/SHA256SUMS#SHA256SUMS"
+          )
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            if [[ "$RELEASE_CHANNEL" == "beta" ]]; then
+              gh release edit "$RELEASE_TAG" --title "Claude Swap Bar $RELEASE_VERSION" \
+                --notes-file "$notes" --prerelease --latest=false
+            else
+              gh release edit "$RELEASE_TAG" --title "Claude Swap Bar $RELEASE_VERSION" \
+                --notes-file "$notes" --prerelease=false --latest
+            fi
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+          elif [[ "$RELEASE_CHANNEL" == "beta" ]]; then
+            gh release create "$RELEASE_TAG" "${assets[@]}" --verify-tag \
+              --title "Claude Swap Bar $RELEASE_VERSION" --notes-file "$notes" --prerelease
           else
-            gh release create "$TAG" --title "$TAG" --notes-file "$NOTES_FILE"
+            gh release create "$RELEASE_TAG" "${assets[@]}" --verify-tag \
+              --title "Claude Swap Bar $RELEASE_VERSION" --notes-file "$notes" --latest
           fi
-          gh release upload "$TAG" "${{ steps.zip.outputs.name }}" --clobber
+
+      - name: Publish moving beta feed
+        if: steps.release.outputs.channel == 'beta'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view beta >/dev/null 2>&1; then
+            gh release edit beta --prerelease --latest=false --title "Claude Swap Bar Beta Feed"
+            gh release upload beta "dist/sparkle/appcast.xml#appcast.xml" --clobber
+          else
+            gh release create beta "dist/sparkle/appcast.xml#appcast.xml" \
+              --title "Claude Swap Bar Beta Feed" \
+              --notes "Moving Sparkle beta feed. Install builds from the versioned prereleases." \
+              --prerelease
+          fi
+
+      - name: Verify published assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          release="$(gh release view "$RELEASE_TAG" --json assets,url)"
+          for name in "ClaudeSwapBar-${RELEASE_VERSION}.zip" appcast.xml SHA256SUMS; do
+            size="$(jq -r --arg name "$name" '.assets[] | select(.name == $name) | .size' <<< "$release")"
+            [[ "$size" =~ ^[1-9][0-9]*$ ]] || { echo "error: missing asset $name" >&2; exit 1; }
+          done
+          echo "Published $(jq -r '.url' <<< "$release")"
