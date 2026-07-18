@@ -93,5 +93,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --generate-notes
+          NOTES_FILE="release-notes/$TAG.md"
+          if [ ! -s "$NOTES_FILE" ]; then
+            echo "Missing release notes: $NOTES_FILE" >&2
+            exit 1
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TAG" --notes-file "$NOTES_FILE"
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file "$NOTES_FILE"
+          fi
           gh release upload "$TAG" "${{ steps.zip.outputs.name }}" --clobber

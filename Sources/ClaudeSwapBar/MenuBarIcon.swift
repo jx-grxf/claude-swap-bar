@@ -10,8 +10,13 @@ import AppKit
 /// About pane.
 enum MenuBarIcon {
 
+    private static func resourceURL(named name: String, extension fileExtension: String) -> URL? {
+        Bundle.main.url(forResource: name, withExtension: fileExtension)
+            ?? Bundle.module.url(forResource: name, withExtension: fileExtension)
+    }
+
     static let statusIcon: NSImage = {
-        guard let url = Bundle.module.url(forResource: "StatusIcon", withExtension: "svg"),
+        guard let url = resourceURL(named: "StatusIcon", extension: "svg"),
               let img = NSImage(contentsOf: url), img.isValid else {
             let fallback = NSImage(
                 systemSymbolName: "gauge.with.needle",
@@ -26,7 +31,7 @@ enum MenuBarIcon {
     }()
 
     static let appLogo: NSImage = {
-        guard let url = Bundle.module.url(forResource: "AppLogo", withExtension: "png"),
+        guard let url = resourceURL(named: "AppLogo", extension: "png"),
               let img = NSImage(contentsOf: url) else { return NSImage() }
         return img
     }()

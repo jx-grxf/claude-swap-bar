@@ -18,3 +18,10 @@ jobs:
         run: |
           test -x ClaudeSwapBar.app/Contents/MacOS/ClaudeSwapBar
           test -f ClaudeSwapBar.app/Contents/Resources/AppIcon.icns
+          test -f ClaudeSwapBar.app/Contents/Resources/AppLogo.png
+          test -f ClaudeSwapBar.app/Contents/Resources/StatusIcon.svg
+          codesign --verify --deep --strict ClaudeSwapBar.app
+          open -n ClaudeSwapBar.app
+          sleep 2
+          pgrep -x ClaudeSwapBar
+          pkill -x ClaudeSwapBar
