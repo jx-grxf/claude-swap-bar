@@ -30,11 +30,11 @@ struct ClaudeSwapBarApp: App {
 
     private var menuBarText: String? {
         var parts: [String] = []
-        if menuBarShowsAccount, let account = store.activeAccount {
-            parts.append(account.displayName)
+        guard let seat = store.defaultSeat else { return nil }
+        if menuBarShowsAccount {
+            parts.append(seat.title)
         }
-        if menuBarShowsUsage, let active = store.activeAccount,
-           let five = store.usage[active.id]?.fiveHour {
+        if menuBarShowsUsage, let five = store.usage[seat.id]?.fiveHour {
             parts.append("\(Int(five.utilization.rounded()))%")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " ")

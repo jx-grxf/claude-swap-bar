@@ -1,16 +1,18 @@
+import SeatKit
 import SwiftUI
 
 struct MenuContentView: View {
     @EnvironmentObject private var store: AppState
     @State private var showAddSheet = false
+    @State private var pendingRemoval: SeatInfo?
     @State private var updates = UpdateService.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
-            if let email = store.unmanagedLoginEmail {
-                newLoginBanner(email)
+            if !store.isShellIntegrationInstalled {
+                shellBanner
                 Divider()
             }
             accountList
@@ -45,7 +47,7 @@ struct MenuContentView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("Claude Swap")
                     .font(.headline)
-                Text(store.activeAccount?.email ?? "No account active")
+                Text(store.defaultSeat.map { "New sessions: \($0.email ?? $0.title)" } ?? "No default account")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -79,24 +81,22 @@ struct MenuContentView: View {
         .accessibilityLabel(help)
     }
 
-    // MARK: - New login banner (one-click add)
+    // MARK: - Shell integration banner
 
-    private func newLoginBanner(_ email: String) -> some View {
+    private var shellBanner: some View {
         HStack(spacing: 8) {
-            Image(systemName: "sparkles")
+            Image(systemName: "terminal")
                 .foregroundStyle(Color.accentColor)
             VStack(alignment: .leading, spacing: 1) {
-                Text("New Claude login detected")
+                Text("Let plain `claude` follow the default")
                     .font(.caption.weight(.semibold))
-                Text(email)
+                Text("Installs the `cseat` command and one line in ~/.zshrc.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
             }
             Spacer()
-            Button("Add") {
-                store.addCurrentClaudeAccount()
+            Button("Install") {
+                store.installShellIntegration()
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
@@ -108,56 +108,51 @@ struct MenuContentView: View {
 
     // MARK: - Account list
 
-    @ViewBuilder
     private var accountList: some View {
-        if store.accounts.isEmpty {
-            emptyView
-        } else {
-            ScrollView(.vertical) {
-                VStack(spacing: 8) {
-                    ForEach(store.accounts) { account in
-                        AccountRowView(
-                            account: account,
-                            isActive: account.id == store.activeAccountID,
-                            usage: store.usage[account.id],
-                            problem: store.usageProblems[account.id],
-                            isBusy: store.isBusy,
-                            onSwitch: { Task { await store.switchTo(account) } },
-                            onRemove: { store.remove(account) }
-                        )
-                    }
+        ScrollView(.vertical) {
+            VStack(spacing: 8) {
+                ForEach(store.seats) { info in
+                    AccountRowView(
+                        info: info,
+                        isDefault: info.id == store.defaultSlug,
+                        usage: store.usage[info.id],
+                        problem: store.usageProblems[info.id],
+                        onMakeDefault: { store.makeDefault(info) },
+                        onOpen: { store.openSession(info) },
+                        onLogIn: { store.logIn(info.seat) },
+                        onReveal: { store.revealInFinder(info) },
+                        onRemove: { pendingRemoval = info }
+                    )
                 }
-                .padding(10)
+                if store.seats.count < 2 {
+                    addHint
+                }
             }
-            .frame(maxHeight: 480)
-            .fixedSize(horizontal: false, vertical: true)
+            .padding(10)
+        }
+        .frame(maxHeight: 480)
+        .fixedSize(horizontal: false, vertical: true)
+        .confirmationDialog(
+            "Remove \(pendingRemoval?.email ?? pendingRemoval?.title ?? "account")?",
+            isPresented: Binding(get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } }),
+            presenting: pendingRemoval
+        ) { info in
+            Button("Remove", role: .destructive) { store.remove(info) }
+        } message: { _ in
+            Text("Deletes this account's folder and login. Shared memory, settings and skills stay.")
         }
     }
 
-    private var emptyView: some View {
-        VStack(spacing: 8) {
-            Image(nsImage: MenuBarIcon.appLogo)
-                .resizable()
-                .interpolation(.high)
-                .frame(width: 44, height: 44)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .opacity(0.9)
-            Text("No accounts yet")
-                .font(.headline)
-            Text("Add the Claude account you're currently logged in with.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Button {
-                showAddSheet = true
-            } label: {
-                Label("Add Account", systemImage: "plus.circle.fill")
-            }
-            .buttonStyle(.borderedProminent)
-            .padding(.top, 4)
+    private var addHint: some View {
+        Button {
+            showAddSheet = true
+        } label: {
+            Label("Add another Claude account", systemImage: "plus.circle")
+                .font(.callout)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
         }
-        .frame(maxWidth: .infinity)
-        .padding(28)
+        .buttonStyle(.borderless)
     }
 
     private func errorBanner(_ message: String) -> some View {
@@ -186,13 +181,13 @@ struct MenuContentView: View {
 
     private var footer: some View {
         VStack(spacing: 8) {
-            if store.claudeRestartPending, let action = store.lastAction {
+            if let action = store.lastAction {
                 HStack(spacing: 5) {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                     Text(action)
                     Spacer()
-                    Text("applies in ~30 s, or restart Claude")
+                    Text("running sessions keep their account")
                         .foregroundStyle(.tertiary)
                 }
                 .font(.caption2)
@@ -200,23 +195,16 @@ struct MenuContentView: View {
 
             HStack(spacing: 8) {
                 Button {
-                    Task { await store.rotate(smart: false) }
-                } label: {
-                    Label("Rotate", systemImage: "arrow.triangle.2.circlepath")
-                }
-                .disabled(store.isBusy || store.accounts.count < 2)
-
-                Button {
-                    Task { await store.rotate(smart: true) }
+                    store.makeBestDefault()
                 } label: {
                     Label("Best Quota", systemImage: "wand.and.stars")
                 }
-                .help("Switch to the account with the most 5h headroom")
-                .disabled(store.isBusy || store.accounts.count < 2)
+                .help("Use the account with the most 5h headroom for new sessions")
+                .disabled(store.seats.filter(\.isLoggedIn).count < 2)
 
                 Spacer()
 
-                if store.isBusy || store.isRefreshingUsage {
+                if store.isRefreshingUsage {
                     ProgressView()
                         .controlSize(.small)
                 }

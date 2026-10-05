@@ -8,9 +8,19 @@ let package = Package(
         .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.2"),
     ],
     targets: [
+        .target(
+            name: "SeatKit",
+            path: "Sources/SeatKit"
+        ),
+        .executableTarget(
+            name: "cseat",
+            dependencies: ["SeatKit"],
+            path: "Sources/cseat"
+        ),
         .executableTarget(
             name: "ClaudeSwapBar",
             dependencies: [
+                "SeatKit",
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
             path: "Sources/ClaudeSwapBar",
@@ -18,6 +28,6 @@ let package = Package(
                 .copy("Resources/AppLogo.png"),
                 .copy("Resources/StatusIcon.svg"),
             ]
-        )
+        ),
     ]
 )

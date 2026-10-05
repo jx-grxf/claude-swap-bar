@@ -69,7 +69,7 @@ struct MenuBarSettingsPane: View {
                 Toggle(isOn: $menuBarShowsUsage) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Show 5-hour usage next to the icon")
-                        Text("The percentage of the active account's current 5h window.")
+                        Text("The current 5h window of the account new sessions use.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -78,8 +78,8 @@ struct MenuBarSettingsPane: View {
 
                 Toggle(isOn: $menuBarShowsAccount) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Show active account name")
-                        Text("The account's short name, e.g. \u{201C}admin\u{201D}.")
+                        Text("Show default account name")
+                        Text("The account's short name, e.g. \u{201C}work\u{201D}.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

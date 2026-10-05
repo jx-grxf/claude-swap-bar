@@ -27,6 +27,9 @@ CONTENTS="${APP}/Contents"
 rm -rf "${APP}"
 mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Resources" "${CONTENTS}/Frameworks"
 cp "${BIN}" "${CONTENTS}/MacOS/${APP_NAME}"
+# The cseat command-line tool ships next to the app binary; the app links it
+# to ~/.local/bin/cseat on request.
+cp "${BIN_DIR}/cseat" "${CONTENTS}/MacOS/cseat"
 
 if [ -d "${SPARKLE_FRAMEWORK}" ]; then
   cp -R "${SPARKLE_FRAMEWORK}" "${CONTENTS}/Frameworks/"
@@ -46,7 +49,11 @@ fi
 # Flatten SwiftPM resources into the standard macOS app resource directory.
 # MenuBarIcon checks Bundle.main first and falls back to Bundle.module when the
 # executable is launched directly during SwiftPM development.
-if [ -d "${RESOURCE_BUNDLE}" ]; then
+# Newer SwiftPM toolchains emit a full bundle (Contents/Resources/…) instead
+# of a flat folder; copy the resources themselves either way.
+if [ -d "${RESOURCE_BUNDLE}/Contents/Resources" ]; then
+  cp -R "${RESOURCE_BUNDLE}/Contents/Resources/." "${CONTENTS}/Resources/"
+elif [ -d "${RESOURCE_BUNDLE}" ]; then
   cp -R "${RESOURCE_BUNDLE}/." "${CONTENTS}/Resources/"
 else
   echo "Missing SwiftPM resource bundle: ${RESOURCE_BUNDLE}" >&2
@@ -87,6 +94,7 @@ SIGN_TARGETS=(
   "${SPARKLE}/Versions/B/XPCServices/Installer.xpc"
   "${SPARKLE}/Versions/B/Autoupdate"
   "${SPARKLE}/Versions/B/Updater.app"
+  "${CONTENTS}/MacOS/cseat"
 )
 
 if [ "${SIGN_IDENTITY}" = "-" ]; then

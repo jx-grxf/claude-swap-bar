@@ -1,3 +1,4 @@
+import SeatKit
 import SwiftUI
 
 /// A compact labelled usage meter (e.g. "5h ▓▓▓░ 9% · resets in 2h 10m").

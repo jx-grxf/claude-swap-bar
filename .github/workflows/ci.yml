@@ -19,6 +19,8 @@ jobs:
       - name: Verify bundle
         run: |
           test -x ClaudeSwapBar.app/Contents/MacOS/ClaudeSwapBar
+          test -x ClaudeSwapBar.app/Contents/MacOS/cseat
+          ClaudeSwapBar.app/Contents/MacOS/cseat help >/dev/null
           test -f ClaudeSwapBar.app/Contents/Resources/AppIcon.icns
           test -f ClaudeSwapBar.app/Contents/Resources/AppLogo.png
           test -f ClaudeSwapBar.app/Contents/Resources/StatusIcon.svg

@@ -1,14 +1,24 @@
 import AppKit
+import Combine
+import SeatKit
 import SwiftUI
 
-/// Guided add-account flow. Claude's login always happens through Claude Code
-/// itself; this sheet walks through it and captures the fresh login the
-/// moment it appears — no Terminal scripts, no manual refresh.
+/// Creates a new account folder and starts its browser login in a terminal.
+/// The login itself always happens through Claude Code; this sheet only
+/// watches for it to land.
 struct AddAccountSheet: View {
     @EnvironmentObject private var store: AppState
     @Environment(\.dismiss) private var dismiss
 
+    @State private var name = ""
+    @State private var email = ""
+    @State private var createdSlug: String?
+
     private let loginPoll = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+
+    private var created: SeatInfo? {
+        createdSlug.flatMap { slug in store.seats.first { $0.id == slug } }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -23,99 +33,99 @@ struct AddAccountSheet: View {
                 Spacer()
             }
 
-            if let email = store.unmanagedLoginEmail {
-                captureCard(email: email)
+            if let created {
+                waitingCard(created)
             } else {
-                loginInstructions
+                form
             }
 
             HStack {
                 Spacer()
-                Button("Close") { dismiss() }
+                Button(created?.isLoggedIn == true ? "Done" : "Close") { dismiss() }
                     .keyboardShortcut(.cancelAction)
             }
         }
         .padding(20)
         .frame(width: 400)
         .onReceive(loginPoll) { _ in
-            // Picks up a fresh `claude /login` without any user action.
+            guard createdSlug != nil, created?.isLoggedIn != true else { return }
             store.reload()
+            if created?.isLoggedIn == true {
+                Task { await store.refreshUsage(force: true) }
+            }
         }
     }
 
-    private func captureCard(email: String) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label {
-                Text("Claude Code is logged in as **\(email)** — not yet managed here.")
-                    .font(.callout)
-            } icon: {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+    private var form: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Each account gets its own login and shares your settings, skills, plugins and memory with the main one.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            LabeledContent("Short name") {
+                TextField("work", text: $name)
+                    .textFieldStyle(.roundedBorder)
+                    .onChange(of: name) { _, value in
+                        name = value.lowercased().replacingOccurrences(of: " ", with: "-")
+                    }
             }
+            LabeledContent("Email (optional)") {
+                TextField("you@example.com", text: $email)
+                    .textFieldStyle(.roundedBorder)
+            }
+            Text("The short name is what you type in the terminal: `cseat \(name.isEmpty ? "work" : name)`.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
             Button {
-                store.addCurrentClaudeAccount()
-                dismiss()
+                if store.addSeat(named: name, email: email.trimmingCharacters(in: .whitespaces)) {
+                    createdSlug = name
+                }
             } label: {
-                Label("Add \(email)", systemImage: "plus.circle.fill")
+                Label("Create and Log In", systemImage: "person.badge.plus")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
+            .disabled(!Seat.isValidSlug(name))
+
+            if let error = store.errorMessage {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
         }
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color.green.opacity(0.08)))
     }
 
-    private var loginInstructions: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if store.activeAccount != nil {
+    private func waitingCard(_ info: SeatInfo) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if info.isLoggedIn {
                 Label {
-                    Text("The current Claude Code login is already managed.")
+                    Text("**\(info.title)** is logged in as **\(info.email ?? "")**.")
                         .font(.callout)
                 } icon: {
-                    Image(systemName: "info.circle.fill")
-                        .foregroundStyle(.blue)
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
                 }
-            }
-
-            Text("To add another account:")
-                .font(.callout.weight(.semibold))
-
-            VStack(alignment: .leading, spacing: 8) {
-                instructionRow(1, "Open a terminal and run `claude /login`.")
-                instructionRow(2, "Sign in with the account you want to add.")
-                instructionRow(3, "This sheet detects the new login automatically — one click and it's added.")
-            }
-
-            Text("Your current account stays safely stored — switch back any time.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 8) {
-                Button {
-                    NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"))
-                } label: {
-                    Label("Open Terminal", systemImage: "terminal")
-                }
-                ProgressView()
-                    .controlSize(.small)
-                Text("waiting for a new login…")
+                Text("Start it with `cseat \(info.title)`, or click the account to use it for new sessions.")
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
+            } else {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Finish the login in the browser window that just opened.")
+                        .font(.callout)
+                }
+                Text("A terminal runs `cseat login \(info.title)`. If the browser didn't open, the terminal shows the link.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Open the Login Again") { store.logIn(info.seat, email: email) }
+                    .controlSize(.small)
             }
         }
-    }
-
-    private func instructionRow(_ number: Int, _ text: LocalizedStringKey) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text("\(number)")
-                .font(.caption.weight(.bold))
-                .frame(width: 16, height: 16)
-                .background(Circle().fill(Color.accentColor.opacity(0.15)))
-            Text(text)
-                .font(.callout)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 10).fill((info.isLoggedIn ? Color.green : Color.accentColor).opacity(0.08)))
     }
 }

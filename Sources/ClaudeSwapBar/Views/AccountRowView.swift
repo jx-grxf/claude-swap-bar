@@ -1,29 +1,32 @@
+import SeatKit
 import SwiftUI
 
 struct AccountRowView: View {
-    let account: Account
-    let isActive: Bool
+    let info: SeatInfo
+    let isDefault: Bool
     let usage: UsageSnapshot?
     let problem: UsageProblem?
-    let isBusy: Bool
-    let onSwitch: () -> Void
+    let onMakeDefault: () -> Void
+    let onOpen: () -> Void
+    let onLogIn: () -> Void
+    let onReveal: () -> Void
     let onRemove: () -> Void
 
     @State private var isHovering = false
 
     var body: some View {
-        Button(action: { if !isActive && !isBusy { onSwitch() } }) {
+        Button(action: { if !isDefault { onMakeDefault() } }) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .center, spacing: 10) {
                     avatar
 
                     VStack(alignment: .leading, spacing: 1) {
                         HStack(spacing: 6) {
-                            Text(account.email)
+                            Text(info.email ?? info.title)
                                 .font(.system(size: 13, weight: .semibold))
                                 .lineLimit(1)
                                 .truncationMode(.middle)
-                            if let plan = account.planLabel {
+                            if let plan = info.planLabel {
                                 Text(plan)
                                     .font(.system(size: 9, weight: .semibold))
                                     .padding(.horizontal, 5)
@@ -32,13 +35,11 @@ struct AccountRowView: View {
                                     .foregroundStyle(Color.accentColor)
                             }
                         }
-                        if let org = account.organizationName {
-                            Text(org)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
+                        Text(subtitle)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                     }
 
                     Spacer(minLength: 6)
@@ -59,47 +60,80 @@ struct AccountRowView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(isActive ? Color.accentColor.opacity(0.4) : .clear, lineWidth: 1)
+                .strokeBorder(isDefault ? Color.accentColor.opacity(0.4) : .clear, lineWidth: 1)
         )
         .onHover { isHovering = $0 }
         .animation(.easeInOut(duration: 0.1), value: isHovering)
         .contextMenu {
-            if !isActive {
-                Button("Switch to this account", action: onSwitch)
+            if !isDefault {
+                Button("Use for New Sessions", action: onMakeDefault)
             }
-            Button("Remove from Claude Swap", role: .destructive, action: onRemove)
+            Button("Open Claude Code with This Account", action: onOpen)
+                .disabled(!info.isLoggedIn)
+            Button(info.isLoggedIn ? "Log In Again…" : "Log In…", action: onLogIn)
+            Divider()
+            Button("Show Folder in Finder", action: onReveal)
+            if !info.seat.isMain {
+                Button("Remove Account…", role: .destructive, action: onRemove)
+            }
         }
     }
 
+    /// Account name, plus live sessions when any run in this account.
+    private var subtitle: String {
+        var parts = [info.seat.isMain ? "main · ~/.claude" : info.title]
+        if info.runningSessions > 0 {
+            parts.append("\(info.runningSessions) running")
+        }
+        return parts.joined(separator: " · ")
+    }
+
     private var rowBackground: Color {
-        if isActive { return Color.accentColor.opacity(0.10) }
+        if isDefault { return Color.accentColor.opacity(0.10) }
         return Color.primary.opacity(isHovering ? 0.07 : 0.035)
     }
 
     private var avatar: some View {
         ZStack {
             Circle()
-                .fill(isActive ? Color.accentColor : Color.secondary.opacity(0.22))
-            Text(String(account.displayName.prefix(1)).uppercased())
+                .fill(isDefault ? Color.accentColor : Color.secondary.opacity(0.22))
+            Text(String((info.email ?? info.title).prefix(1)).uppercased())
                 .font(.system(size: 13, weight: .bold, design: .rounded))
-                .foregroundStyle(isActive ? Color.white : Color.primary)
+                .foregroundStyle(isDefault ? Color.white : Color.primary)
         }
         .frame(width: 28, height: 28)
     }
 
     @ViewBuilder
     private var trailing: some View {
-        if isActive {
-            HStack(spacing: 4) {
-                Circle().fill(Color.green).frame(width: 7, height: 7)
-                Text("Active")
-            }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-        } else if isHovering {
-            Text("Switch")
+        HStack(spacing: 6) {
+            if isDefault {
+                HStack(spacing: 4) {
+                    Circle().fill(Color.green).frame(width: 7, height: 7)
+                    Text("Default")
+                }
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(.secondary)
+            } else if isHovering {
+                Text("Use")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+            }
+
+            if info.isLoggedIn {
+                Button(action: onOpen) {
+                    Image(systemName: "terminal")
+                        .font(.system(size: 11, weight: .semibold))
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .help("Open Claude Code with this account")
+                .accessibilityLabel("Open Claude Code with \(info.email ?? info.title)")
+            } else {
+                Button("Log In", action: onLogIn)
+                    .controlSize(.small)
+            }
         }
     }
 
@@ -122,9 +156,9 @@ struct AccountRowView: View {
             // updating right now.
             if let problem {
                 HStack(spacing: 5) {
-                    Image(systemName: "clock.arrow.circlepath")
+                    Image(systemName: problem == .idle ? "moon.zzz" : "clock.arrow.circlepath")
                         .font(.caption2)
-                    Text(usage == nil ? problem.shortText : "showing cached data — \(problem.shortText)")
+                    Text(usage == nil || problem == .notLoggedIn ? problem.shortText : "cached — \(problem.shortText)")
                         .font(.caption2)
                 }
                 .foregroundStyle(.tertiary)
