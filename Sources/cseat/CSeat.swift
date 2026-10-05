@@ -143,20 +143,22 @@ struct CSeat {
     }
 
     static func login(_ seat: Seat, email: String?) throws {
-        guard let claude = ClaudeLauncher.claudeExecutable() else { throw ClaudeLauncher.NotFound() }
         _ = try? store.sync(seat)
-        print("Opening the browser login for \(Style.bold(seat.slug))…")
+
+        // `claude auth login` waits silently for the browser when a login
+        // already exists; the interactive /login screen always shows the link.
+        print("Starting Claude Code for \(Style.bold(seat.slug)) on its login screen.")
+        print("  1. Choose \u{201C}Claude account with subscription\u{201D}.")
+        print("  2. In the browser, sign in as \(Style.bold(email ?? "the account you want")). Wrong account there? Use a private window.")
+        print("  3. When it says Login successful, quit with /exit.")
         fflush(stdout)
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: claude)
-        process.arguments = ["auth", "login", "--claudeai"] + (email.map { ["--email", $0] } ?? [])
-        process.environment = ClaudeLauncher.environment(for: seat)
-        try process.run()
-        process.waitUntilExit()
+        // Ctrl-C belongs to Claude Code while it runs.
+        signal(SIGINT, SIG_IGN)
+        defer { signal(SIGINT, SIG_DFL) }
+        try ClaudeLauncher.run(seat: seat, arguments: ["/login"])
 
-        guard process.terminationStatus == 0, let profile = store.profile(of: seat),
-              SeatCredentialReader().credentials(for: seat) != nil else {
+        guard let profile = store.profile(of: seat), SeatCredentialReader().credentials(for: seat) != nil else {
             fail("Login didn't finish. Try again with: cseat login \(seat.slug)")
         }
         print(Style.green("✓ ") + "\(seat.slug) is logged in as \(profile.email).")
