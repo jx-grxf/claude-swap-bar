@@ -6,6 +6,8 @@ struct AccountRowView: View {
     let isDefault: Bool
     let usage: UsageSnapshot?
     let problem: UsageProblem?
+    /// Short name of another account logged in to the same claude.ai login.
+    let duplicateOf: String?
     let onMakeDefault: () -> Void
     let onOpen: () -> Void
     let onLogIn: () -> Void
@@ -45,6 +47,14 @@ struct AccountRowView: View {
                     Spacer(minLength: 6)
 
                     trailing
+                }
+
+                if let duplicateOf {
+                    Label("Same login as \(duplicateOf). Log in again with the right account (right-click → Log In Again).",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 usageSection

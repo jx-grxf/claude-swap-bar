@@ -117,6 +117,7 @@ struct MenuContentView: View {
                         isDefault: info.id == store.defaultSlug,
                         usage: store.usage[info.id],
                         problem: store.usageProblems[info.id],
+                        duplicateOf: store.duplicate(of: info)?.title,
                         onMakeDefault: { store.makeDefault(info) },
                         onOpen: { store.openSession(info) },
                         onLogIn: { store.logIn(info.seat) },

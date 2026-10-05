@@ -44,6 +44,13 @@ final class AppState: ObservableObject {
         seats.first { $0.id == defaultSlug }
     }
 
+    /// Another seat logged in to the same claude.ai account, usually after a
+    /// `/login` inside the wrong seat. Both then share one quota.
+    func duplicate(of info: SeatInfo) -> SeatInfo? {
+        guard let email = info.email else { return nil }
+        return seats.first { $0.id != info.id && $0.email?.caseInsensitiveCompare(email) == .orderedSame }
+    }
+
     init() {
         usage = UsageCache.load()
         reload()

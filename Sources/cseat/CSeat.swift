@@ -276,7 +276,7 @@ struct CSeat {
             check(profile != nil && credentials != nil, "\(seat.slug): \(state)")
             if credentials != nil, let email = profile?.email {
                 if let other = emails[email.lowercased()] {
-                    check(false, "\(seat.slug) and \(other) use the same account \(email)")
+                    check(false, "\(seat.slug) and \(other) use the same account \(email). Log the wrong one in again: cseat login <name> --email <address>")
                 }
                 emails[email.lowercased()] = seat.slug
             }
