@@ -25,6 +25,9 @@ public enum TerminalLauncher {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
             process.arguments = ["-na", ghostty.path, "--args", "-e", "/bin/zsh", "-ilc", script]
+            // `open` hands its environment to the new Ghostty process, and
+            // every later tab in it inherits that. Start it clean.
+            process.environment = cleanEnvironment()
             try process.run()
             return
         }
@@ -36,6 +39,14 @@ public enum TerminalLauncher {
         try Data(contents.utf8).write(to: file)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: file.path)
         NSWorkspace.shared.open(file)
+    }
+
+    static func cleanEnvironment(_ base: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
+        var env = base
+        for key in ClaudeLauncher.sessionMarkers + ["CLAUDE_CONFIG_DIR", "CSEAT_SHELL_PID"] {
+            env.removeValue(forKey: key)
+        }
+        return env
     }
 
     public static func shellQuoted(_ value: String) -> String {
