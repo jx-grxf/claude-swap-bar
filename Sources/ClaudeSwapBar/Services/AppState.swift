@@ -74,6 +74,10 @@ final class AppState: ObservableObject {
                 runningSessions: store.runningSessionCount(of: seat)
             )
         }
+        // Numbers cached for another login of the same seat are wrong now.
+        for info in seats where usage[info.id]?.belongs(to: info.email) == false {
+            usage[info.id] = nil
+        }
         defaultSlug = store.defaultSeat().slug
         isShellIntegrationInstalled = Self.zshrcSourcesIntegration(home: store.home)
             && FileManager.default.fileExists(atPath: store.shellInitURL.path)

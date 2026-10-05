@@ -12,11 +12,15 @@ public struct SeatUsageFetcher: Sendable {
     public init() {}
 
     public func fetch(_ seat: Seat, cached: UsageSnapshot?, force: Bool = false) async -> (UsageSnapshot?, UsageProblem?) {
-        guard let credentials = reader.credentials(for: seat) else { return (cached, .notLoggedIn) }
+        guard let credentials = reader.credentials(for: seat) else { return (nil, .notLoggedIn) }
+        let email = SeatStore().profile(of: seat)?.email
+        let cached = cached?.belongs(to: email) == true ? cached : nil
         if !force, let cached, !cached.isStale { return (cached, nil) }
         guard !credentials.isAccessTokenExpired else { return (cached, .idle) }
         do {
-            return (try await service.fetchUsage(accessToken: credentials.accessToken), nil)
+            var snapshot = try await service.fetchUsage(accessToken: credentials.accessToken)
+            snapshot.accountEmail = email
+            return (snapshot, nil)
         } catch let error as UsageService.UsageError {
             return (cached, error.asProblem)
         } catch {

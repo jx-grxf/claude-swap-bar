@@ -8,12 +8,23 @@ public struct UsageSnapshot: Codable, Equatable, Sendable {
     /// Per-model limits (e.g. Opus) from the `limits` array.
     public var scoped: [ScopedUsage]
     public var fetchedAt: Date
+    /// The claude.ai account the numbers belong to. A seat can be logged in
+    /// to a different account later; its old numbers must not carry over.
+    public var accountEmail: String?
 
-    public init(fiveHour: UsageWindow?, sevenDay: UsageWindow?, scoped: [ScopedUsage], fetchedAt: Date) {
+    public init(fiveHour: UsageWindow?, sevenDay: UsageWindow?, scoped: [ScopedUsage], fetchedAt: Date, accountEmail: String? = nil) {
         self.fiveHour = fiveHour
         self.sevenDay = sevenDay
         self.scoped = scoped
         self.fetchedAt = fetchedAt
+        self.accountEmail = accountEmail
+    }
+
+    /// False when the snapshot was taken for another account than `email`.
+    public func belongs(to email: String?) -> Bool {
+        // Snapshots from before this field existed can't be attributed.
+        guard let accountEmail, let email else { return false }
+        return accountEmail.caseInsensitiveCompare(email) == .orderedSame
     }
 
     /// The usage endpoint allows ~28–30 requests/hour per token, so snapshots
