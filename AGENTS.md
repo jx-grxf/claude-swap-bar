@@ -2,7 +2,7 @@
 
 ## Project
 
-Claude Swap Bar is a native macOS 14+ SwiftUI menu bar app for managing and switching Claude Code accounts. It is a Swift Package Manager executable. Sparkle is the only third-party dependency and must remain pinned exactly in both `Package.swift` and `Package.resolved`.
+Claude Swap Bar is a native macOS 14+ SwiftUI menu bar app plus the `cseat` CLI for running several Claude Code accounts side by side. Each account is an isolated `CLAUDE_CONFIG_DIR` ("seat"). It is a Swift Package Manager package with a `SeatKit` library, the `cseat` executable and the `ClaudeSwapBar` app executable. Sparkle is the only third-party dependency and must remain pinned exactly in both `Package.swift` and `Package.resolved`.
 
 The app is intentionally menu-bar-only (`MenuBarExtra`, `LSUIElement`, accessory activation policy). A successful launch shows a menu bar item; it does not create a Dock icon or a normal main window.
 
@@ -45,8 +45,10 @@ SwiftPM resources are flattened into `ClaudeSwapBar.app/Contents/Resources` by `
 
 ## Source layout
 
+- `Sources/SeatKit`: seat model, seat store (folders, symlinks, `.claude.json` merge, default seat), read-only credential access, usage fetch and cache, `claude` launcher.
+- `Sources/cseat`: command-line tool, bundled at `Contents/MacOS/cseat`.
 - `Sources/ClaudeSwapBar/ClaudeSwapBarApp.swift`: app entry point and menu bar scene.
-- `Sources/ClaudeSwapBar/Services`: account vault, Keychain, Claude Code bridge, OAuth, and usage logic.
+- `Sources/ClaudeSwapBar/Services`: app state, terminal launcher.
 - `Sources/ClaudeSwapBar/Services/UpdateService.swift`: Sparkle controller and Stable/Beta channel routing.
 - `Sources/ClaudeSwapBar/Views`: menu bar content and account interactions.
 - `Sources/ClaudeSwapBar/Settings`: settings UI and activation-policy handling.
@@ -90,7 +92,9 @@ Never reuse or rotate the Sparkle key casually. Existing installations trust the
 
 ## Security and data handling
 
-- Account metadata lives in `~/Library/Application Support/ClaudeSwapBar` and tokens live in macOS Keychain; neither belongs in fixtures, logs, or commits.
-- Preserve Claude Code advisory locking and refresh-token ownership semantics when changing account switching.
+- Never write, refresh, copy or restore an OAuth credential. Claude Code owns each seat's refresh-token lineage; reading the access token for usage is the only allowed access. Swapping credentials is what made v1 log users out.
+- Seats live in `~/.claude-seats/<slug>`; the usage cache lives in `~/Library/Application Support/ClaudeSwapBar`. Neither belongs in fixtures, logs, or commits.
+- Test `cseat` with `CSEAT_HOME=<scratch dir>` and `CSEAT_CLAUDE=<stand-in script>`. Never override `HOME` for that: `security` resolves the login Keychain through `HOME`, and a real `claude auth login` would open the browser.
+- Take Claude Code's advisory lock (`<.claude.json>.lock` directory) when merging into a seat's `.claude.json`.
 - Keep release signing and notarization material in GitHub Actions secrets only.
 - Avoid logging credential payloads, authorization headers, account JSON, or Keychain output.
