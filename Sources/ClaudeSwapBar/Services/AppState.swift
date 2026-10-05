@@ -208,8 +208,18 @@ final class AppState: ObservableObject {
         runCSeatInTerminal(arguments)
     }
 
+    /// Starts the seat through the shell integration when it's installed,
+    /// so `/swap` in that window restarts in the same tab.
     func openSession(_ info: SeatInfo) {
-        runCSeatInTerminal([info.id])
+        let slug = TerminalLauncher.shellQuoted(info.id)
+        let fallback = cseatCommand([info.id])
+        guard let fallback else { return }
+        let command = "if typeset -f _cseat_session >/dev/null; then _cseat_session \(slug) --; else \(fallback); fi"
+        do {
+            try TerminalLauncher.run(command)
+        } catch {
+            errorMessage = friendlyMessage(error)
+        }
     }
 
     func remove(_ info: SeatInfo) {
@@ -266,14 +276,19 @@ final class AppState: ObservableObject {
         reload()
     }
 
-    private func runCSeatInTerminal(_ arguments: [String]) {
-        // Prefer the stable link so terminals show a short command.
+    /// Shell command running `cseat` with `arguments`; prefers the stable
+    /// link so terminals show a short command.
+    private func cseatCommand(_ arguments: [String]) -> String? {
         let linked = store.home.appendingPathComponent(".local/bin/cseat").path
         guard let cli = FileManager.default.isExecutableFile(atPath: linked) ? linked : Self.bundledCLI?.path else {
             errorMessage = "The cseat tool is missing from the app bundle."
-            return
+            return nil
         }
-        let command = ([cli] + arguments).map(TerminalLauncher.shellQuoted).joined(separator: " ")
+        return ([cli] + arguments).map(TerminalLauncher.shellQuoted).joined(separator: " ")
+    }
+
+    private func runCSeatInTerminal(_ arguments: [String]) {
+        guard let command = cseatCommand(arguments) else { return }
         do {
             try TerminalLauncher.run(command)
         } catch {

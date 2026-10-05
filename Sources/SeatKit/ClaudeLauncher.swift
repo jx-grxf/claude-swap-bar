@@ -29,8 +29,21 @@ public enum ClaudeLauncher {
     }
 
     /// Environment for a process running in `seat`.
+    /// Variables Claude Code sets for the processes it spawns. A session
+    /// started from inside another one (as `/swap` does) must not inherit
+    /// them: `CLAUDE_CODE_CHILD_SESSION` alone switches transcript saving
+    /// off, so `--resume` and `--continue` would lose the conversation.
+    public static let sessionMarkers = [
+        "AI_AGENT", "CLAUDECODE", "CLAUDE_CODE_BRIDGE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION",
+        "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_EXECPATH", "CLAUDE_CODE_MESSAGING_SOCKET",
+        "CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDE_CODE_SESSION_ATTENDED", "CLAUDE_CODE_SESSION_ID",
+        "CLAUDE_CODE_SSE_PORT", "CLAUDE_EFFORT", "CLAUDE_ENV_FILE", "CLAUDE_PID",
+        "CLAUDE_PLUGIN_DATA", "CLAUDE_PLUGIN_ROOT", "CLAUDE_PROJECT_DIR",
+    ]
+
     public static func environment(for seat: Seat, base: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
         var env = base
+        for marker in sessionMarkers { env.removeValue(forKey: marker) }
         if let dir = seat.configDirEnvironmentValue {
             env["CLAUDE_CONFIG_DIR"] = dir
         } else {

@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// Moves a running Claude Code session to another seat: the running process
@@ -12,6 +13,7 @@ public struct SessionMover {
         case noClaudeProcess
         case sameSeat(String)
         case notLoggedIn(String)
+        case sameAccount(String, String)
         case noOtherSeat
 
         public var errorDescription: String? {
@@ -22,7 +24,9 @@ public struct SessionMover {
                 return "Couldn't find the Claude Code process of this session."
             case let .sameSeat(slug):
                 return "This session already runs with \(slug)."
-            case let .notLoggedIn(slug):
+            case let .sameAccount(slug, email):
+            return "\(slug) is logged in to the same account (\(email)), so there's nothing to switch to. Log it in with its own account: cseat login \(slug) --email <address>"
+        case let .notLoggedIn(slug):
                 return "\(slug) isn't logged in yet. Run: cseat login \(slug)"
             case .noOtherSeat:
                 return "There's no other logged-in account to move to. Add one with: cseat add <name>"
@@ -64,7 +68,12 @@ public struct SessionMover {
             guard reader.credentials(for: seat) != nil else { throw MoveError.notLoggedIn(slug) }
             return seat
         }
-        let candidates = store.seats().filter { $0 != current && reader.credentials(for: $0) != nil }
+        let currentEmail = store.profile(of: current)?.email
+        let candidates = store.seats().filter { seat in
+            guard seat != current, reader.credentials(for: seat) != nil else { return false }
+            guard let currentEmail, let email = store.profile(of: seat)?.email else { return true }
+            return email.caseInsensitiveCompare(currentEmail) != .orderedSame
+        }
         let defaultSeat = store.defaultSeat()
         if candidates.contains(defaultSeat) { return defaultSeat }
         let best = candidates.max { headroom(usage[$0.slug]) < headroom(usage[$1.slug]) }
@@ -79,7 +88,18 @@ public struct SessionMover {
 
     /// Ends this session's Claude Code process and resumes the conversation
     /// in `target`. `cseatPath` is used for the new-window fallback.
+    /// Refuses a move between two seats logged in to the same claude.ai
+    /// account — it would restart the session on the same quota.
+    public func checkDifferentAccount(_ target: Seat) throws {
+        let current = currentSeat()
+        guard let mine = store.profile(of: current)?.email,
+              let theirs = store.profile(of: target)?.email,
+              mine.caseInsensitiveCompare(theirs) == .orderedSame else { return }
+        throw MoveError.sameAccount(target.slug, theirs)
+    }
+
     public func move(to target: Seat, cseatPath: String) throws -> Handoff {
+        try checkDifferentAccount(target)
         guard let sessionID = environment["CLAUDE_CODE_SESSION_ID"], !sessionID.isEmpty else {
             throw MoveError.notInSession
         }
@@ -93,10 +113,13 @@ public struct SessionMover {
             try store.writeHandoff(shellPID: shellPID, arguments: [target.slug, "--"] + resume)
             handoff = .sameTab
         } else {
-            // Give the old process a moment to exit before the transcript is reopened.
-            let command = (["sleep 2;", TerminalLauncher.shellQuoted(cseatPath), target.slug]
-                + resume.map(TerminalLauncher.shellQuoted)).joined(separator: " ")
-            try TerminalLauncher.run(command)
+            // Give the old process a moment to exit before the transcript is
+            // reopened. Run through the shell integration when it exists, so
+            // a later /swap in that window stays in the same tab.
+            let next = ([target.slug, "--"] + resume).map(TerminalLauncher.shellQuoted).joined(separator: " ")
+            let command = "sleep 2; if typeset -f _cseat_session >/dev/null; then _cseat_session \(next); "
+                + "else \(TerminalLauncher.shellQuoted(cseatPath)) run \(next); fi"
+            try TerminalLauncher.run(command, workingDirectory: ProcessTable.workingDirectory(of: claude.pid))
             handoff = .newWindow
         }
 
@@ -134,6 +157,17 @@ struct ProcessTable {
             entries[pid] = Entry(pid: pid, ppid: ppid, argv0: argv0)
         }
         return ProcessTable(entries: entries)
+    }
+
+    /// Current directory of `pid`, or nil when macOS won't say.
+    static func workingDirectory(of pid: Int32) -> String? {
+        var info = proc_vnodepathinfo()
+        let size = Int32(MemoryLayout<proc_vnodepathinfo>.size)
+        guard proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &info, size) == size else { return nil }
+        let path = withUnsafeBytes(of: info.pvi_cdir.vip_path) { raw in
+            String(decoding: raw.prefix { $0 != 0 }, as: UTF8.self)
+        }
+        return path.isEmpty ? nil : path
     }
 
     /// Nearest ancestor that is a Claude Code CLI process.

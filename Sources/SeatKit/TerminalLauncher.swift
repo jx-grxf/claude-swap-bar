@@ -6,8 +6,20 @@ import Foundation
 /// command exits.
 public enum TerminalLauncher {
 
-    public static func run(_ command: String) throws {
-        let script = "\(command); exec /bin/zsh -il"
+    /// - Parameter workingDirectory: folder the window starts in; Claude
+    ///   Code keys project memory and instructions to it.
+    public static func run(_ command: String, workingDirectory: String? = nil) throws {
+        // The window inherits the caller's environment. When that caller runs
+        // inside Claude Code, drop its session markers first.
+        var parts = ["unset " + ClaudeLauncher.sessionMarkers.joined(separator: " ")]
+        if let workingDirectory { parts.append("cd \(shellQuoted(workingDirectory))") }
+        parts.append(command)
+        let script = parts.joined(separator: "; ") + "; exec /bin/zsh -il"
+        // Tests run the script in place instead of opening a window.
+        if let dryRun = ProcessInfo.processInfo.environment["CSEAT_TERMINAL_SCRIPT"], !dryRun.isEmpty {
+            try Data(script.utf8).write(to: URL(fileURLWithPath: dryRun))
+            return
+        }
         let ghostty = URL(fileURLWithPath: "/Applications/Ghostty.app")
         if FileManager.default.fileExists(atPath: ghostty.path) {
             let process = Process()

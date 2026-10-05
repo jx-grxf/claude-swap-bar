@@ -87,7 +87,7 @@ cseat doctor                   Check every account
 
 ### Moving a running session
 
-Type `/swap` (or `/swap work`) in a running session. Without a name it picks the default account, or the logged-in one with the most 5h headroom. `/swap` runs `cseat move` while the command expands, before anything reaches the model, so it also works on an account that hit its limit. `cseat move` ends the session's Claude Code process and leaves a note for the `claude()` shell function, which resumes the same conversation (`--resume <id>`) in the new account. Sessions started without the shell integration continue in a new terminal window instead.
+Type `/swap` (or `/swap work`) in a running session. Without a name it picks the default account, or the logged-in one with the most 5h headroom. `/swap` runs `cseat move` while the command expands, before anything reaches the model, so it also works on an account that hit its limit. `cseat move` ends the session's Claude Code process and leaves a note for the `claude()` shell function, which resumes the same conversation (`--resume <id>`) in the new account. Sessions started without the shell integration continue in a new terminal window, in the same project folder. Claude Code's own session variables are removed before the new session starts; an inherited `CLAUDE_CODE_CHILD_SESSION` would otherwise switch transcript saving off. `/swap` refuses to move between two accounts that are logged in to the same claude.ai login.
 
 Don't use `/login` inside a session to change accounts: it replaces the login of the account that session belongs to.
 
