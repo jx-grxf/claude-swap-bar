@@ -4,9 +4,9 @@ import Foundation
 /// Runs a shell command in a new terminal window: Ghostty when installed,
 /// Terminal.app otherwise. The window stays open as a normal shell after the
 /// command exits.
-enum TerminalLauncher {
+public enum TerminalLauncher {
 
-    static func run(_ command: String) throws {
+    public static func run(_ command: String) throws {
         let script = "\(command); exec /bin/zsh -il"
         let ghostty = URL(fileURLWithPath: "/Applications/Ghostty.app")
         if FileManager.default.fileExists(atPath: ghostty.path) {
@@ -26,7 +26,7 @@ enum TerminalLauncher {
         NSWorkspace.shared.open(file)
     }
 
-    static func shellQuoted(_ value: String) -> String {
+    public static func shellQuoted(_ value: String) -> String {
         "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 }

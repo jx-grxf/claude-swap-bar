@@ -12,6 +12,7 @@ struct CSeat {
       cseat <name> [claude args…]    Start Claude Code with that account
       cseat use <name>               Make <name> the default for plain `claude`
       cseat best                     Make the account with the most 5h headroom the default
+      cseat move [name]              Inside a session (/swap): continue it with another account
       cseat add <name> [--email e]   Create an account and log it in
       cseat login <name> [--email e] Log an account in again
       cseat remove <name> [--yes]    Delete an account and its login
@@ -36,6 +37,8 @@ struct CSeat {
                 try use(try requireSeat(args.first))
             case "best":
                 try await best()
+            case "move", "swap":
+                try move(args.first.flatMap { $0.hasPrefix("-") ? nil : $0 })
             case "add":
                 try add(args)
             case "login":
@@ -114,8 +117,7 @@ struct CSeat {
         try store.setDefault(seat)
         let who = store.profile(of: seat)?.email ?? "not logged in yet"
         print("Default is now \(Style.bold(seat.slug)) (\(who)). New `claude` sessions use it.")
-        print("  To move a running session: /exit, then \(Style.bold("claude -c")) continues the same conversation with this account.")
-        print(Style.dim("  Don't run /login inside a session — that replaces the login of the account the session belongs to."))
+        print("  To move a running session, type \(Style.bold("/swap")) in it. Don't use /login there: that replaces the login of the session's own account.")
     }
 
     static func best() async throws {
@@ -135,6 +137,29 @@ struct CSeat {
         }
         guard let bestSeat else { fail("No account has usage data yet.") }
         try use(bestSeat)
+    }
+
+    /// Ends the calling Claude Code session and resumes the same
+    /// conversation in another seat — in the same terminal tab when the
+    /// shell integration started it, otherwise in a new window.
+    static func move(_ slug: String?) throws {
+        let mover = SessionMover(store: store)
+        let target = try mover.target(named: slug, usage: UsageCache.load())
+        let who = store.profile(of: target)?.email ?? target.slug
+        let handoff = try mover.move(to: target, cseatPath: stableCLIPath())
+        switch handoff {
+        case .sameTab:
+            print("Continuing this conversation with \(who) (\(target.slug))…")
+        case .newWindow:
+            print("Continuing this conversation with \(who) (\(target.slug)) in a new terminal window…")
+        }
+    }
+
+    /// `~/.local/bin/cseat` when it exists, else this binary.
+    static func stableCLIPath() -> String {
+        let linked = store.home.appendingPathComponent(".local/bin/cseat").path
+        if FileManager.default.isExecutableFile(atPath: linked) { return linked }
+        return URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath().path
     }
 
     static func add(_ args: [String]) throws {
@@ -229,6 +254,11 @@ struct CSeat {
 
         try store.writeShellInit(cseatPath: linkPath)
         print("Wrote \(store.shellInitURL.path)")
+        if try store.installSwapCommand() {
+            print("Installed /swap (\(store.swapCommandURL.path))")
+        } else {
+            print(Style.yellow("Left your own \(store.swapCommandURL.path) alone; /swap isn't managed by cseat."))
+        }
 
         let zshrc = URL(fileURLWithPath: "\(home)/.zshrc")
         let current = (try? String(contentsOf: zshrc, encoding: .utf8)) ?? ""

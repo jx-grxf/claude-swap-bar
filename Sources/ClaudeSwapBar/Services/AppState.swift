@@ -164,7 +164,7 @@ final class AppState: ObservableObject {
         do {
             try store.setDefault(info.seat)
             defaultSlug = info.id
-            lastAction = "New sessions use \(info.email ?? info.title). Running session: /exit, then claude -c"
+            lastAction = "New sessions use \(info.email ?? info.title). Move a running session: /swap"
             errorMessage = nil
         } catch {
             errorMessage = friendlyMessage(error)

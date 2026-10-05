@@ -29,7 +29,8 @@ Claude Swap Bar gives every Claude Code account its own configuration folder, th
 
 - **Accounts side by side.** Run your work and private account in two terminals at the same time.
 - **Shared setup.** Every account shares settings, skills, plugins, hooks, agents, memory and transcripts with your normal `~/.claude`. User MCP servers and project trust are copied over on every start.
-- **Default account.** Plain `claude` starts whichever account you pick in the menu bar or with `cseat use`. Running sessions keep their account.
+- **Default account.** Plain `claude` starts whichever account you pick in the menu bar or with `cseat use`.
+- **`/swap` in a running session.** Ends the session and continues the same conversation with the other account, in the same terminal tab. Works even when the current account is out of quota, and Remote Control reconnects if `remoteControlAtStartup` is on.
 - **Live usage meters.** 5-hour, 7-day and per-model windows per account, with reset countdowns.
 - **Best Quota.** Make the account with the most 5h headroom the default in one click.
 - **Remote Control and claude.ai connectors keep working**, because each account uses a normal claude.ai login, not a setup token.
@@ -73,6 +74,7 @@ cseat                          List accounts, usage and the default
 cseat <name> [claude args…]    Start Claude Code with that account
 cseat use <name>               Make <name> the default for plain `claude`
 cseat best                     Make the account with the most 5h headroom the default
+cseat move [name]              Inside a session (/swap): continue it with another account
 cseat add <name> [--email e]   Create an account and log it in
 cseat login <name> [--email e] Log an account in again
 cseat remove <name> [--yes]    Delete an account and its login
@@ -82,6 +84,12 @@ cseat doctor                   Check every account
 ```
 
 `cseat main` always starts your normal `~/.claude` account. A shell that already has `CLAUDE_CONFIG_DIR` set keeps it.
+
+### Moving a running session
+
+Type `/swap` (or `/swap work`) in a running session. Without a name it picks the default account, or the logged-in one with the most 5h headroom. `/swap` runs `cseat move` while the command expands, before anything reaches the model, so it also works on an account that hit its limit. `cseat move` ends the session's Claude Code process and leaves a note for the `claude()` shell function, which resumes the same conversation (`--resume <id>`) in the new account. Sessions started without the shell integration continue in a new terminal window instead.
+
+Don't use `/login` inside a session to change accounts: it replaces the login of the account that session belongs to.
 
 ## How it works
 
