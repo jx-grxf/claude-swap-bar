@@ -187,9 +187,8 @@ struct MenuContentView: View {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                     Text(action)
-                    Spacer()
-                    Text("running sessions keep their account")
-                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
                 }
                 .font(.caption2)
             }

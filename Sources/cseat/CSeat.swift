@@ -113,7 +113,9 @@ struct CSeat {
     static func use(_ seat: Seat) throws {
         try store.setDefault(seat)
         let who = store.profile(of: seat)?.email ?? "not logged in yet"
-        print("Default is now \(Style.bold(seat.slug)) (\(who)). New `claude` sessions use it; running ones keep theirs.")
+        print("Default is now \(Style.bold(seat.slug)) (\(who)). New `claude` sessions use it.")
+        print("  To move a running session: /exit, then \(Style.bold("claude -c")) continues the same conversation with this account.")
+        print(Style.dim("  Don't run /login inside a session — that replaces the login of the account the session belongs to."))
     }
 
     static func best() async throws {
