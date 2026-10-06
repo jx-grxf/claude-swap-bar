@@ -75,10 +75,15 @@ public struct ShellIntegration {
     }
 
     /// Shells to set up: the login shell, plus any other supported shell
-    /// the user already has a startup file for.
+    /// the user already has its own startup file for. `~/.profile` doesn't
+    /// count: other tools create it, and `sh` reads it too.
     var targetShells: [Shell] {
-        Shell.allCases.filter { shell in
-            shell == loginShell || startupFiles(for: shell).contains { FileManager.default.fileExists(atPath: $0.path) }
+        let home = store.home
+        let ownFiles: [Shell: [String]] = [.zsh: [".zshrc"], .bash: [".bashrc", ".bash_profile"]]
+        return Shell.allCases.filter { shell in
+            if shell == loginShell { return true }
+            let files = shell == .zsh ? startupFiles(for: .zsh).map(\.path) : (ownFiles[shell] ?? []).map { home.appendingPathComponent($0).path }
+            return files.contains { FileManager.default.fileExists(atPath: $0) }
         }
     }
 
