@@ -113,8 +113,10 @@ public struct ShellIntegration {
         return report
     }
 
-    /// Returns whether `file` changed.
-    private func addSourceLine(to file: URL) throws -> Bool {
+    /// Returns whether `file` changed. Writes through a symlink, so a
+    /// startup file kept in a dotfiles repo stays a link.
+    private func addSourceLine(to link: URL) throws -> Bool {
+        let file = link.resolvingSymlinksInPath()
         let current = (try? String(contentsOf: file, encoding: .utf8)) ?? ""
         var lines = current.components(separatedBy: "\n")
         if lines.contains(sourceLine) && !lines.contains(where: Self.legacyLines.contains) { return false }
