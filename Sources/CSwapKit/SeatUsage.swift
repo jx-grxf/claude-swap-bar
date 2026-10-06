@@ -37,8 +37,20 @@ public enum UsageCache {
             .appendingPathComponent("CSwap/usage.json")
     }
 
+    /// Where versions before the rename kept the cache.
+    static var legacyURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("ClaudeSwapBar/seat-usage.json")
+    }
+
+    /// Accounts missing from the cache fall back to the pre-rename one, so an
+    /// idle account keeps its last numbers across the update.
     public static func load() -> [String: UsageSnapshot] {
-        guard let data = try? Data(contentsOf: url) else { return [:] }
+        decode(legacyURL).merging(decode(url)) { _, current in current }
+    }
+
+    private static func decode(_ file: URL) -> [String: UsageSnapshot] {
+        guard let data = try? Data(contentsOf: file) else { return [:] }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return (try? decoder.decode([String: UsageSnapshot].self, from: data)) ?? [:]
