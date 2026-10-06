@@ -27,6 +27,13 @@ public struct UsageSnapshot: Codable, Equatable, Sendable {
         return accountEmail.caseInsensitiveCompare(email) == .orderedSame
     }
 
+    /// Room left before Claude Code blocks: whichever of the 5h and weekly
+    /// windows is fuller decides. Nil before the first 5h reading.
+    public var headroom: Double? {
+        guard let fiveHour else { return nil }
+        return 100 - max(fiveHour.currentUtilization, sevenDay?.currentUtilization ?? 0)
+    }
+
     /// The usage endpoint allows ~28–30 requests/hour per token, so snapshots
     /// younger than 3 minutes are always served from cache.
     public var isStale: Bool {
@@ -44,12 +51,22 @@ public struct UsageWindow: Codable, Equatable, Sendable {
     public var utilization: Double
     public var resetsAt: Date?
 
-    public var fraction: Double { min(max(utilization / 100, 0), 1) }
+    /// The window rolled over after the snapshot was taken. An idle seat
+    /// keeps its old snapshot for hours, and its numbers no longer apply.
+    public var hasReset: Bool {
+        guard let resetsAt else { return false }
+        return resetsAt <= Date()
+    }
+
+    /// Usage right now: zero once the window has reset, whatever was cached.
+    public var currentUtilization: Double { hasReset ? 0 : utilization }
+
+    public var fraction: Double { min(max(currentUtilization / 100, 0), 1) }
 
     public var resetText: String? {
         guard let resetsAt else { return nil }
         let remaining = resetsAt.timeIntervalSinceNow
-        guard remaining > 0 else { return nil }
+        guard remaining > 0 else { return "window reset" }
         let hours = Int(remaining) / 3600
         let minutes = (Int(remaining) % 3600) / 60
         if hours > 24 {

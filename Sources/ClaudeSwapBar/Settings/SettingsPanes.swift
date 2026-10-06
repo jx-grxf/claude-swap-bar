@@ -3,6 +3,7 @@ import SwiftUI
 
 struct GeneralSettingsPane: View {
     @AppStorage("refreshIntervalMinutes") private var refreshIntervalMinutes = 5
+    @AppStorage("autoSwitchDefault") private var autoSwitchDefault = true
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var launchAtLoginError: String?
 
@@ -21,6 +22,18 @@ struct GeneralSettingsPane: View {
                 Text("Anthropic allows roughly 30 usage checks per hour per account, so shorter intervals mostly hit the cache.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            Section("Accounts") {
+                Toggle(isOn: $autoSwitchDefault) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Switch the default when it runs out")
+                        Text("When the default account hits its 5h or weekly limit, new sessions use the account with the most quota left. Running sessions keep their account until you move them.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .toggleStyle(.switch)
             }
 
             Section("Startup") {

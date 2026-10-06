@@ -259,6 +259,23 @@ public struct SeatStore: Sendable {
         return pids.filter { $0 > 1 && kill($0, 0) == 0 }.count
     }
 
+    /// Live Claude Code sessions in this seat, newest first, from the
+    /// `<pid>.json` records Claude Code keeps under `<config>/sessions`.
+    public func runningSessions(of seat: Seat) -> [RunningSession] {
+        let dir = seat.configDir.appendingPathComponent("sessions")
+        let names = (try? fileManager.contentsOfDirectory(atPath: dir.path)) ?? []
+        return names
+            .filter { $0.hasSuffix(".json") }
+            .compactMap { name -> RunningSession? in
+                guard let data = try? Data(contentsOf: dir.appendingPathComponent(name)),
+                      var session = try? JSONDecoder().decode(RunningSession.self, from: data),
+                      session.pid > 1, kill(session.pid, 0) == 0 else { return nil }
+                session.seatSlug = seat.slug
+                return session
+            }
+            .sorted { ($0.startedAt ?? 0) > ($1.startedAt ?? 0) }
+    }
+
     // MARK: - Shell integration
 
     public static let shellSourceLine = "[[ -r ~/.claude-seats/shell.zsh ]] && source ~/.claude-seats/shell.zsh"
@@ -303,6 +320,23 @@ public struct SeatStore: Sendable {
             return
           fi
           _cseat_session --default -- "$@"
+        }
+
+        # `cseat <account>` starts through the same wrapper, so /swap and the
+        # menu bar's Move also restart those sessions in their own tab.
+        cseat() {
+          if [[ ! -x \(cseat) ]]; then
+            command cseat "$@"
+            return
+          fi
+          case "$1" in
+            ""|-*|list|ls|status|use|best|move|swap|add|login|remove|rm|sync|setup|doctor|run|sessions|help)
+              \(cseat) "$@" ;;
+            *)
+              local name=$1
+              shift
+              _cseat_session "$name" -- "$@" ;;
+          esac
         }
 
         """

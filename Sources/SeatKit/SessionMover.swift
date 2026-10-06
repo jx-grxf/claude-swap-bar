@@ -58,7 +58,7 @@ public struct SessionMover {
     }
 
     /// The named seat, or else the default seat, or else the logged-in seat
-    /// with the most 5h headroom — never the current one.
+    /// with the most room left — never the current one.
     public func target(named slug: String?, usage: [String: UsageSnapshot]) throws -> Seat {
         let current = currentSeat()
         let reader = SeatCredentialReader()
@@ -82,22 +82,21 @@ public struct SessionMover {
     }
 
     private func headroom(_ snapshot: UsageSnapshot?) -> Double {
-        guard let five = snapshot?.fiveHour else { return -1 }
-        return 100 - five.utilization
+        snapshot?.headroom ?? -1
     }
 
-    /// Ends this session's Claude Code process and resumes the conversation
-    /// in `target`. `cseatPath` is used for the new-window fallback.
     /// Refuses a move between two seats logged in to the same claude.ai
     /// account — it would restart the session on the same quota.
-    public func checkDifferentAccount(_ target: Seat) throws {
-        let current = currentSeat()
+    public func checkDifferentAccount(_ target: Seat, from source: Seat? = nil) throws {
+        let current = source ?? currentSeat()
         guard let mine = store.profile(of: current)?.email,
               let theirs = store.profile(of: target)?.email,
               mine.caseInsensitiveCompare(theirs) == .orderedSame else { return }
         throw MoveError.sameAccount(target.slug, theirs)
     }
 
+    /// Ends this session's Claude Code process and resumes the conversation
+    /// in `target`. `cseatPath` is used for the new-window fallback.
     public func move(to target: Seat, cseatPath: String) throws -> Handoff {
         try checkDifferentAccount(target)
         guard let sessionID = environment["CLAUDE_CODE_SESSION_ID"], !sessionID.isEmpty else {
@@ -106,10 +105,53 @@ public struct SessionMover {
         guard let claude = ProcessTable.current().claudeAncestor(of: getpid()) else {
             throw MoveError.noClaudeProcess
         }
+        return try handOff(
+            claude: claude, sessionID: sessionID,
+            shellPID: environment["CSEAT_SHELL_PID"].flatMap(Int32.init),
+            workingDirectory: ProcessTable.workingDirectory(of: claude.pid),
+            to: target, cseatPath: cseatPath
+        )
+    }
+
+    /// Moves a session from outside it, as the menu bar app does. The
+    /// handoff is the same as `/swap`: the tab's `claude()` wrapper restarts
+    /// it when the wrapper started it, otherwise a new window resumes it.
+    public func move(_ session: RunningSession, to target: Seat, cseatPath: String) throws -> Handoff {
+        guard let source = store.seat(named: session.seatSlug) else {
+            throw SeatStore.SeatError.notFound(session.seatSlug)
+        }
+        guard source != target else { throw MoveError.sameSeat(target.slug) }
+        guard SeatCredentialReader().credentials(for: target) != nil else { throw MoveError.notLoggedIn(target.slug) }
+        try checkDifferentAccount(target, from: source)
+        // The record can outlive its process and the PID can be reused;
+        // only ever signal a Claude Code process.
+        guard let claude = ProcessTable.current().entries[session.pid], claude.isClaude else {
+            throw MoveError.noClaudeProcess
+        }
+        return try handOff(
+            claude: claude, sessionID: session.sessionId,
+            shellPID: ProcessTable.environment(of: claude.pid)["CSEAT_SHELL_PID"].flatMap(Int32.init),
+            workingDirectory: session.cwd ?? ProcessTable.workingDirectory(of: claude.pid),
+            to: target, cseatPath: cseatPath
+        )
+    }
+
+    /// How `move(_:to:cseatPath:)` would continue `session`.
+    public func handoffKind(for session: RunningSession) -> Handoff {
+        guard let claude = ProcessTable.current().entries[session.pid],
+              let shellPID = ProcessTable.environment(of: session.pid)["CSEAT_SHELL_PID"].flatMap(Int32.init),
+              claude.ppid == shellPID else { return .newWindow }
+        return .sameTab
+    }
+
+    private func handOff(
+        claude: ProcessTable.Entry, sessionID: String, shellPID: Int32?,
+        workingDirectory: String?, to target: Seat, cseatPath: String
+    ) throws -> Handoff {
         let resume = ["--resume", sessionID]
 
         let handoff: Handoff
-        if let shellPID = environment["CSEAT_SHELL_PID"].flatMap(Int32.init), claude.ppid == shellPID {
+        if let shellPID, claude.ppid == shellPID {
             try store.writeHandoff(shellPID: shellPID, arguments: [target.slug, "--"] + resume)
             handoff = .sameTab
         } else {
@@ -119,7 +161,7 @@ public struct SessionMover {
             let next = ([target.slug, "--"] + resume).map(TerminalLauncher.shellQuoted).joined(separator: " ")
             let command = "sleep 2; if typeset -f _cseat_session >/dev/null; then _cseat_session \(next); "
                 + "else \(TerminalLauncher.shellQuoted(cseatPath)) run \(next); fi"
-            try TerminalLauncher.run(command, workingDirectory: ProcessTable.workingDirectory(of: claude.pid))
+            try TerminalLauncher.run(command, workingDirectory: workingDirectory)
             handoff = .newWindow
         }
 
@@ -134,6 +176,10 @@ struct ProcessTable {
         let pid: Int32
         let ppid: Int32
         let argv0: String
+
+        var isClaude: Bool {
+            (argv0 as NSString).lastPathComponent == "claude" || argv0.contains("/claude/versions/")
+        }
     }
 
     let entries: [Int32: Entry]
@@ -170,15 +216,47 @@ struct ProcessTable {
         return path.isEmpty ? nil : path
     }
 
+    /// Environment of another process of this user, from `KERN_PROCARGS2`:
+    /// argc, the executable path, padding, argv, then the environment.
+    static func environment(of pid: Int32) -> [String: String] {
+        var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
+        var size = 0
+        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return [:] }
+        var buffer = [UInt8](repeating: 0, count: size)
+        guard sysctl(&mib, 3, &buffer, &size, nil, 0) == 0 else { return [:] }
+
+        let argc = buffer.withUnsafeBytes { $0.load(as: Int32.self) }
+        var index = MemoryLayout<Int32>.size
+        func skipString() { while index < size, buffer[index] != 0 { index += 1 } }
+        func skipNULs() { while index < size, buffer[index] == 0 { index += 1 } }
+
+        skipString()
+        skipNULs()
+        for _ in 0..<max(argc, 0) {
+            skipString()
+            index += 1
+        }
+
+        var env: [String: String] = [:]
+        while index < size, buffer[index] != 0 {
+            let start = index
+            skipString()
+            let entry = String(decoding: buffer[start..<index], as: UTF8.self)
+            if let equals = entry.firstIndex(of: "=") {
+                env[String(entry[..<equals])] = String(entry[entry.index(after: equals)...])
+            }
+            index += 1
+        }
+        return env
+    }
+
     /// Nearest ancestor that is a Claude Code CLI process.
     func claudeAncestor(of pid: Int32) -> Entry? {
         var current = entries[pid]?.ppid
         var hops = 0
         while let pid = current, pid > 1, hops < 32 {
             guard let entry = entries[pid] else { return nil }
-            if (entry.argv0 as NSString).lastPathComponent == "claude" || entry.argv0.contains("/claude/versions/") {
-                return entry
-            }
+            if entry.isClaude { return entry }
             current = entry.ppid
             hops += 1
         }

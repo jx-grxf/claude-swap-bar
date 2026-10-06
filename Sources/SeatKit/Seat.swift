@@ -67,6 +67,34 @@ public struct SeatProfile: Equatable, Sendable {
     public var organizationName: String?
 }
 
+/// One live Claude Code process, as recorded in `<config>/sessions/<pid>.json`.
+public struct RunningSession: Identifiable, Hashable, Sendable, Decodable {
+    public var pid: Int32
+    public var sessionId: String
+    public var cwd: String?
+    public var name: String?
+    /// `busy` while a reply is running, `idle` while it waits for input.
+    public var status: String?
+    /// Milliseconds since epoch.
+    public var startedAt: Double?
+    /// Filled in by `SeatStore`; not part of the record.
+    public var seatSlug: String = ""
+
+    public var id: Int32 { pid }
+    public var isBusy: Bool { status == "busy" }
+
+    /// Folder name, or the session's own name when it has none.
+    public var title: String {
+        if let name, !name.isEmpty { return name }
+        if let cwd { return (cwd as NSString).lastPathComponent }
+        return "Session \(pid)"
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case pid, sessionId, cwd, name, status, startedAt
+    }
+}
+
 /// Read-only view of a seat's OAuth credential. SeatKit never refreshes or
 /// writes these — Claude Code owns the refresh-token lineage of every seat.
 public struct SeatCredentials: Sendable {

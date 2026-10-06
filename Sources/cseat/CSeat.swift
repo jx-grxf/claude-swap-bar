@@ -11,8 +11,10 @@ struct CSeat {
       cseat                          List accounts, usage and the default
       cseat <name> [claude args…]    Start Claude Code with that account
       cseat use <name>               Make <name> the default for plain `claude`
-      cseat best                     Make the account with the most 5h headroom the default
+      cseat best                     Make the account with the most quota left the default
       cseat move [name]              Inside a session (/swap): continue it with another account
+      cseat move <name> --pid <pid>  Move the running session <pid> to <name>
+      cseat sessions                 List running Claude Code sessions per account
       cseat add <name> [--email e]   Create an account and log it in
       cseat login <name> [--email e] Log an account in again
       cseat remove <name> [--yes]    Delete an account and its login
@@ -38,7 +40,14 @@ struct CSeat {
             case "best":
                 try await best()
             case "move", "swap":
-                try move(args.first.flatMap { $0.hasPrefix("-") ? nil : $0 })
+                let name = args.first.flatMap { $0.hasPrefix("-") ? nil : $0 }
+                if let pid = option("--pid", in: args) {
+                    try move(pid: pid, to: name)
+                } else {
+                    try move(name)
+                }
+            case "sessions":
+                sessions()
             case "add":
                 try add(args)
             case "login":
@@ -128,8 +137,7 @@ struct CSeat {
         for seat in store.seats() where store.profile(of: seat) != nil {
             let (snapshot, _) = await fetcher.fetch(seat, cached: cache[seat.slug])
             UsageCache.update(seat.slug, snapshot)
-            guard let five = snapshot?.fiveHour else { continue }
-            let headroom = 100 - five.utilization
+            guard let headroom = snapshot?.headroom else { continue }
             if headroom > bestHeadroom {
                 bestHeadroom = headroom
                 bestSeat = seat
@@ -153,6 +161,37 @@ struct CSeat {
         case .newWindow:
             print("Continuing this conversation with \(who) (\(target.slug)) in a new terminal window…")
         }
+    }
+
+    /// Moves a session from outside it, like the menu bar's Move action.
+    static func move(pid: String, to slug: String?) throws {
+        guard let slug else { fail("Usage: cseat move <name> --pid <pid>") }
+        let target = try requireSeat(slug)
+        guard let session = store.seats().lazy.flatMap(store.runningSessions(of:)).first(where: { String($0.pid) == pid }) else {
+            fail("No running Claude Code session with PID \(pid). See: cseat sessions")
+        }
+        let who = store.profile(of: target)?.email ?? target.slug
+        switch try SessionMover(store: store).move(session, to: target, cseatPath: stableCLIPath()) {
+        case .sameTab:
+            print("Moved \(session.title) to \(who) (\(target.slug)); it restarts in its own tab.")
+        case .newWindow:
+            print("Moved \(session.title) to \(who) (\(target.slug)) in a new terminal window.")
+        }
+    }
+
+    static func sessions() {
+        let mover = SessionMover(store: store)
+        var any = false
+        for seat in store.seats() {
+            for session in store.runningSessions(of: seat) {
+                any = true
+                let state = session.isBusy ? Style.yellow("busy") : Style.dim(session.status ?? "")
+                let where_ = mover.handoffKind(for: session) == .sameTab ? "" : Style.dim("  (moves to a new window)")
+                print("\(Style.bold(seat.slug))  \(session.pid)  \(session.title)  \(state)\(where_)")
+                if let cwd = session.cwd { print("  " + Style.dim(cwd)) }
+            }
+        }
+        if !any { print(Style.dim("No Claude Code sessions running.")) }
     }
 
     /// `~/.local/bin/cseat` when it exists, else this binary.
@@ -359,8 +398,8 @@ struct CSeat {
         let width = 20
         let filled = Int((window.fraction * Double(width)).rounded())
         let blocks = String(repeating: "█", count: filled) + String(repeating: "░", count: width - filled)
-        let percent = String(format: "%3d%%", Int(window.utilization.rounded()))
-        let colored = window.utilization >= 90 ? Style.red(blocks) : window.utilization >= 70 ? Style.yellow(blocks) : Style.green(blocks)
+        let percent = String(format: "%3d%%", Int(window.currentUtilization.rounded()))
+        let colored = window.currentUtilization >= 90 ? Style.red(blocks) : window.currentUtilization >= 70 ? Style.yellow(blocks) : Style.green(blocks)
         return "\(label) \(colored) \(percent)  \(Style.dim(window.resetText ?? ""))"
     }
 

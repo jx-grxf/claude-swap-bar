@@ -8,6 +8,9 @@ struct AccountRowView: View {
     let problem: UsageProblem?
     /// Short name of another account logged in to the same claude.ai login.
     let duplicateOf: String?
+    /// Accounts this account's sessions can move to.
+    let moveTargets: [SeatInfo]
+    let onMove: (RunningSession, SeatInfo) -> Void
     let onMakeDefault: () -> Void
     let onOpen: () -> Void
     let onLogIn: () -> Void
@@ -58,6 +61,10 @@ struct AccountRowView: View {
                 }
 
                 usageSection
+
+                if !info.sessions.isEmpty {
+                    sessionList
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
@@ -145,6 +152,80 @@ struct AccountRowView: View {
                     .controlSize(.small)
             }
         }
+    }
+
+    // MARK: - Running sessions
+
+    private var sessionList: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(info.sessions) { session in
+                sessionRow(session)
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private func sessionRow(_ session: RunningSession) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(session.isBusy ? Color.orange : Color.green)
+                .frame(width: 6, height: 6)
+                .help(session.isBusy ? "Working on a reply" : "Waiting for input")
+            Text(session.title)
+                .font(.caption.weight(.medium))
+                .lineLimit(1)
+            if let cwd = session.cwd {
+                Text((cwd as NSString).lastPathComponent)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .help(abbreviated(cwd))
+            }
+            Spacer(minLength: 4)
+            moveControl(for: session)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.primary.opacity(0.04))
+        )
+    }
+
+    @ViewBuilder
+    private func moveControl(for session: RunningSession) -> some View {
+        if moveTargets.count == 1, let target = moveTargets.first {
+            Button {
+                onMove(session, target)
+            } label: {
+                Label("Move to \(target.title)", systemImage: "arrow.right.circle")
+                    .font(.caption2.weight(.semibold))
+            }
+            .buttonStyle(.borderless)
+            .help(moveHelp(session, to: target))
+        } else if !moveTargets.isEmpty {
+            Menu {
+                ForEach(moveTargets) { target in
+                    Button("\(target.title) — \(target.email ?? "")") { onMove(session, target) }
+                }
+            } label: {
+                Label("Move", systemImage: "arrow.right.circle")
+                    .font(.caption2.weight(.semibold))
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("Continue this conversation with another account")
+        }
+    }
+
+    private func moveHelp(_ session: RunningSession, to target: SeatInfo) -> String {
+        let base = "Continue this conversation with \(target.email ?? target.title), like /swap"
+        return session.isBusy ? base + ". Interrupts the reply in progress." : base
+    }
+
+    private func abbreviated(_ path: String) -> String {
+        let home = NSHomeDirectory()
+        return path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
     }
 
     @ViewBuilder

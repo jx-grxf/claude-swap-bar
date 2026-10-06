@@ -1,3 +1,4 @@
+import ServiceManagement
 import SwiftUI
 
 @main
@@ -35,7 +36,7 @@ struct ClaudeSwapBarApp: App {
             parts.append(seat.title)
         }
         if menuBarShowsUsage, let five = store.usage[seat.id]?.fiveHour {
-            parts.append("\(Int(five.utilization.rounded()))%")
+            parts.append("\(Int(five.currentUtilization.rounded()))%")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
@@ -46,5 +47,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Menu-bar-only app: no Dock icon, no main window.
         NSApp.setActivationPolicy(.accessory)
         _ = UpdateService.shared
+        enableLaunchAtLoginOnce()
+    }
+
+    /// The menu bar is where the default account and the usage meters live,
+    /// so start with the Mac once. Turning it off in Settings sticks.
+    private func enableLaunchAtLoginOnce() {
+        let key = "didEnableLaunchAtLogin"
+        // Development builds run from the build folder; don't register those.
+        guard !UserDefaults.standard.bool(forKey: key),
+              Bundle.main.bundlePath.hasPrefix("/Applications/") else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        if SMAppService.mainApp.status != .enabled {
+            try? SMAppService.mainApp.register()
+        }
     }
 }

@@ -118,6 +118,8 @@ struct MenuContentView: View {
                         usage: store.usage[info.id],
                         problem: store.usageProblems[info.id],
                         duplicateOf: store.duplicate(of: info)?.title,
+                        moveTargets: store.moveTargets(from: info),
+                        onMove: { session, target in store.move(session, to: target) },
                         onMakeDefault: { store.makeDefault(info) },
                         onOpen: { store.openSession(info) },
                         onLogIn: { store.logIn(info.seat) },
@@ -199,7 +201,7 @@ struct MenuContentView: View {
                 } label: {
                     Label("Best Quota", systemImage: "wand.and.stars")
                 }
-                .help("Use the account with the most 5h headroom for new sessions")
+                .help("Use the account with the most quota left (5h and weekly) for new sessions")
                 .disabled(store.seats.filter(\.isLoggedIn).count < 2)
 
                 Spacer()

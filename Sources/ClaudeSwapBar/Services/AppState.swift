@@ -9,7 +9,9 @@ struct SeatInfo: Identifiable, Equatable {
     var organizationName: String?
     var planLabel: String?
     var isLoggedIn: Bool
-    var runningSessions: Int
+    var sessions: [RunningSession]
+
+    var runningSessions: Int { sessions.count }
 
     var id: String { seat.slug }
     var title: String { seat.isMain ? "main" : seat.slug }
@@ -29,11 +31,13 @@ final class AppState: ObservableObject {
     @Published var lastAction: String?
 
     @AppStorage("refreshIntervalMinutes") var refreshIntervalMinutes = 5
+    @AppStorage("autoSwitchDefault") var autoSwitchDefault = true
 
     private let store = SeatStore()
     private let reader = SeatCredentialReader()
     private let fetcher = SeatUsageFetcher()
     private var refreshTimer: Timer?
+    private var watcher: SeatWatcher?
 
     /// Per-seat "do not fetch before" gate. Respected even by forced
     /// refreshes — the usage endpoint budget (~30/hour/account) is precious.
@@ -54,7 +58,60 @@ final class AppState: ObservableObject {
     init() {
         usage = UsageCache.load()
         reload()
+        refreshShellIntegration()
         restartUsageTimer()
+        startWatching()
+    }
+
+    /// Follows what `cseat` and Claude Code change on disk.
+    private func startWatching() {
+        let watcher = SeatWatcher(
+            seatsRoot: store.root,
+            paths: [store.mainSeat.configDir.appendingPathComponent("sessions"), UsageCache.url.deletingLastPathComponent()],
+            usageFile: UsageCache.url
+        ) { [weak self] changes in
+            Task { @MainActor [weak self] in self?.apply(changes) }
+        }
+        watcher.start()
+        self.watcher = watcher
+    }
+
+    private func apply(_ changes: Set<SeatWatcher.Change>) {
+        if changes.contains(.seats) {
+            reload()
+        } else if changes.contains(.sessions) {
+            reloadSessions()
+        }
+        if changes.contains(.usage) {
+            mergeCachedUsage()
+        }
+    }
+
+    /// Session records change on every reply; refresh them without asking
+    /// the Keychain about every login again.
+    private func reloadSessions() {
+        for index in seats.indices {
+            let fresh = store.runningSessions(of: seats[index].seat)
+            if fresh != seats[index].sessions { seats[index].sessions = fresh }
+        }
+    }
+
+    /// Picks up usage `cseat` fetched, when it is newer than ours.
+    private func mergeCachedUsage() {
+        for (slug, snapshot) in UsageCache.load() where (usage[slug]?.fetchedAt ?? .distantPast) < snapshot.fetchedAt {
+            guard let info = seats.first(where: { $0.id == slug }), snapshot.belongs(to: info.email) else { continue }
+            usage[slug] = snapshot
+            usageProblems[slug] = nil
+        }
+    }
+
+    /// Rewrites the zsh snippet and `/swap` when they are installed, so an
+    /// app update also updates them.
+    private func refreshShellIntegration() {
+        guard isShellIntegrationInstalled else { return }
+        let linked = store.home.appendingPathComponent(".local/bin/cseat").path
+        try? store.writeShellInit(cseatPath: linked)
+        _ = try? store.installSwapCommand()
     }
 
     // MARK: - Loading
@@ -71,7 +128,7 @@ final class AppState: ObservableObject {
                 organizationName: credentials == nil ? nil : profile?.organizationName,
                 planLabel: credentials?.planLabel,
                 isLoggedIn: credentials != nil && profile != nil,
-                runningSessions: store.runningSessionCount(of: seat)
+                sessions: store.runningSessions(of: seat)
             )
         }
         // Numbers cached for another login of the same seat are wrong now.
@@ -90,10 +147,7 @@ final class AppState: ObservableObject {
         isRefreshingUsage = true
         defer { isRefreshingUsage = false }
 
-        // Pick up usage `cseat` fetched in the meantime.
-        for (slug, snapshot) in UsageCache.load() where (usage[slug]?.fetchedAt ?? .distantPast) < snapshot.fetchedAt {
-            usage[slug] = snapshot
-        }
+        mergeCachedUsage()
 
         let now = Date()
         let work = seats.map(\.seat).filter { seat in
@@ -122,6 +176,21 @@ final class AppState: ObservableObject {
         }
 
         UsageCache.save(usage)
+        switchDefaultIfExhausted()
+    }
+
+    /// When the default account's 5h or weekly window is full, new sessions would
+    /// start blocked. Hand the default to the account with the most room.
+    private func switchDefaultIfExhausted() {
+        guard autoSwitchDefault, let current = defaultSeat,
+              let room = usage[current.id]?.headroom, room <= 1 else { return }
+        let candidates = seats.filter { info in
+            guard info.id != current.id, info.isLoggedIn, duplicate(of: info)?.id != current.id else { return false }
+            return headroom(info) > 5
+        }
+        guard let best = candidates.max(by: { headroom($0) < headroom($1) }) else { return }
+        makeDefault(best)
+        lastAction = "\(current.title) is at its limit — new sessions now use \(best.email ?? best.title). Move running ones: /swap"
     }
 
     private func scheduleBackoff(for slug: String, after problem: UsageProblem) {
@@ -171,7 +240,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Makes the logged-in seat with the most 5h headroom the default.
+    /// Makes the logged-in seat with the most quota left the default.
     func makeBestDefault() {
         let candidates = seats.filter { $0.isLoggedIn && usage[$0.id]?.fiveHour != nil }
         guard let best = candidates.max(by: { headroom($0) < headroom($1) }) else {
@@ -182,8 +251,7 @@ final class AppState: ObservableObject {
     }
 
     private func headroom(_ info: SeatInfo) -> Double {
-        guard let five = usage[info.id]?.fiveHour else { return -1 }
-        return 100 - five.utilization
+        usage[info.id]?.headroom ?? -1
     }
 
     // MARK: - Seat management
@@ -219,6 +287,29 @@ final class AppState: ObservableObject {
             try TerminalLauncher.run(command)
         } catch {
             errorMessage = friendlyMessage(error)
+        }
+    }
+
+    /// Moves a running session to `target`, the same way `/swap` does.
+    func move(_ session: RunningSession, to target: SeatInfo) {
+        let cseatPath = store.home.appendingPathComponent(".local/bin/cseat").path
+        let cli = FileManager.default.isExecutableFile(atPath: cseatPath) ? cseatPath : (Self.bundledCLI?.path ?? cseatPath)
+        do {
+            let handoff = try SessionMover(store: store).move(session, to: target.seat, cseatPath: cli)
+            let place = handoff == .sameTab ? "in its tab" : "in a new terminal window"
+            lastAction = "\(session.title) continues with \(target.email ?? target.title) \(place)"
+            errorMessage = nil
+        } catch {
+            errorMessage = friendlyMessage(error)
+        }
+    }
+
+    /// Accounts a session in `info` can move to: logged in, another login.
+    func moveTargets(from info: SeatInfo) -> [SeatInfo] {
+        seats.filter { other in
+            guard other.id != info.id, other.isLoggedIn else { return false }
+            guard let mine = info.email, let theirs = other.email else { return true }
+            return mine.caseInsensitiveCompare(theirs) != .orderedSame
         }
     }
 

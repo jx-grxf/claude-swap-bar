@@ -31,8 +31,10 @@ Claude Swap Bar gives every Claude Code account its own configuration folder, th
 - **Shared setup.** Every account shares settings, skills, plugins, hooks, agents, memory and transcripts with your normal `~/.claude`. User MCP servers and project trust are copied over on every start.
 - **Default account.** Plain `claude` starts whichever account you pick in the menu bar or with `cseat use`.
 - **`/swap` in a running session.** Ends the session and continues the same conversation with the other account, in the same terminal tab. Works even when the current account is out of quota, and Remote Control reconnects if `remoteControlAtStartup` is on.
-- **Live usage meters.** 5-hour, 7-day and per-model windows per account, with reset countdowns.
-- **Best Quota.** Make the account with the most 5h headroom the default in one click.
+- **Running sessions in the menu.** Every live Claude Code session shows under its account, busy or idle, with its project folder. **Move to …** continues it with another account, exactly like `/swap`.
+- **Live usage meters.** 5-hour, 7-day and per-model windows per account, with reset countdowns. A window that reset since the last reading shows as empty instead of keeping stale numbers.
+- **Best Quota.** Make the account with the most quota left (5h and weekly) the default in one click. With **Switch the default when it runs out** (on by default), the app does this by itself when the default hits a limit.
+- **App and `cseat` stay in sync.** `cseat use`, `cseat add`, logins and new sessions show up in the menu bar within a second. The app starts at login.
 - **Remote Control and claude.ai connectors keep working**, because each account uses a normal claude.ai login, not a setup token.
 
 ### Why not swap one login?
@@ -73,8 +75,10 @@ The menu bar **＋** button does the same in a terminal window.
 cseat                          List accounts, usage and the default
 cseat <name> [claude args…]    Start Claude Code with that account
 cseat use <name>               Make <name> the default for plain `claude`
-cseat best                     Make the account with the most 5h headroom the default
+cseat best                     Make the account with the most quota left the default
 cseat move [name]              Inside a session (/swap): continue it with another account
+cseat move <name> --pid <pid>  Move the running session <pid> to <name>
+cseat sessions                 List running Claude Code sessions per account
 cseat add <name> [--email e]   Create an account and log it in
 cseat login <name> [--email e] Log an account in again
 cseat remove <name> [--yes]    Delete an account and its login
@@ -83,11 +87,13 @@ cseat setup                    Install the shell integration for `claude`
 cseat doctor                   Check every account
 ```
 
-`cseat main` always starts your normal `~/.claude` account. A shell that already has `CLAUDE_CONFIG_DIR` set keeps it.
+`cseat main` always starts your normal `~/.claude` account. A shell that already has `CLAUDE_CONFIG_DIR` set keeps it. With the shell integration, `cseat <name>` runs through the same `claude()` wrapper, so `/swap` restarts those sessions in their own tab too.
 
 ### Moving a running session
 
-Type `/swap` (or `/swap work`) in a running session. Without a name it picks the default account, or the logged-in one with the most 5h headroom. `/swap` runs `cseat move` while the command expands, before anything reaches the model, so it also works on an account that hit its limit. `cseat move` ends the session's Claude Code process and leaves a note for the `claude()` shell function, which resumes the same conversation (`--resume <id>`) in the new account. Sessions started without the shell integration continue in a new terminal window, in the same project folder. Claude Code's own session variables are removed before the new session starts; an inherited `CLAUDE_CODE_CHILD_SESSION` would otherwise switch transcript saving off. `/swap` refuses to move between two accounts that are logged in to the same claude.ai login.
+Type `/swap` (or `/swap work`) in a running session. Without a name it picks the default account, or the logged-in one with the most quota left. `/swap` runs `cseat move` while the command expands, before anything reaches the model, so it also works on an account that hit its limit. `cseat move` ends the session's Claude Code process and leaves a note for the `claude()` shell function, which resumes the same conversation (`--resume <id>`) in the new account. Sessions started without the shell integration continue in a new terminal window, in the same project folder. Claude Code's own session variables are removed before the new session starts; an inherited `CLAUDE_CODE_CHILD_SESSION` would otherwise switch transcript saving off. `/swap` refuses to move between two accounts that are logged in to the same claude.ai login.
+
+The menu bar does the same from outside: **Move to …** next to a session, or `cseat move <name> --pid <pid>`. It reads `CSEAT_SHELL_PID` from the session's environment to decide whether the tab's wrapper can restart it; otherwise the conversation continues in a new window. Moving a busy session interrupts the reply in progress.
 
 Don't use `/login` inside a session to change accounts: it replaces the login of the account that session belongs to.
 

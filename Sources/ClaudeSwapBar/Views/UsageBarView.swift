@@ -7,7 +7,7 @@ struct UsageBarView: View {
     let window: UsageWindow
 
     private var tint: Color {
-        switch window.utilization {
+        switch window.currentUtilization {
         case ..<60: return .green
         case ..<85: return .orange
         default: return .red
@@ -34,18 +34,17 @@ struct UsageBarView: View {
             }
             .frame(height: 6)
 
-            Text("\(Int(window.utilization.rounded()))%")
+            Text("\(Int(window.currentUtilization.rounded()))%")
                 .font(.caption2.monospacedDigit().weight(.medium))
                 .foregroundStyle(.secondary)
                 .frame(width: 34, alignment: .trailing)
 
-            if let reset = window.resetText {
-                Text(reset)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .frame(width: 96, alignment: .trailing)
-            }
+            // Always reserve the column so every bar in the menu lines up.
+            Text(window.resetText ?? "")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .frame(width: 96, alignment: .trailing)
         }
     }
 }
