@@ -9,8 +9,8 @@ cd "$(dirname "$0")/.."
 : "${CSWAPBAR_RELEASE_TAG:?CSWAPBAR_RELEASE_TAG is required}"
 : "${CSWAPBAR_SPARKLE_PUBLIC_KEY:?CSWAPBAR_SPARKLE_PUBLIC_KEY is required}"
 
-APP="dist/ClaudeSwapBar.app"
-ZIP="dist/sparkle/ClaudeSwapBar-${CSWAPBAR_VERSION}.zip"
+APP="dist/CSwap.app"
+ZIP="dist/sparkle/CSwap-${CSWAPBAR_VERSION}.zip"
 APPCAST="dist/sparkle/appcast.xml"
 
 for path in "$APP" "$ZIP" "$APPCAST"; do
@@ -18,10 +18,10 @@ for path in "$APP" "$ZIP" "$APPCAST"; do
 done
 
 INFO="$APP/Contents/Info.plist"
-[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO")" == "me.johannesgrof.claudeswapbar" ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO")" == "me.johannesgrof.cswap" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO")" == "$CSWAPBAR_VERSION" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INFO")" == "$CSWAPBAR_BUILD" ]]
-[[ "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$INFO")" == "https://github.com/jx-grxf/claude-swap-bar/releases/latest/download/appcast.xml" ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$INFO")" == "https://github.com/jx-grxf/cswap/releases/latest/download/appcast.xml" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$INFO")" == "$CSWAPBAR_SPARKLE_PUBLIC_KEY" ]]
 
 codesign --verify --deep --strict "$APP"
@@ -30,7 +30,7 @@ unzip -tq "$ZIP"
 
 ./script/verify_appcast.swift \
   "$APPCAST" \
-  "https://github.com/${GITHUB_REPOSITORY:-jx-grxf/claude-swap-bar}/releases/download/${CSWAPBAR_RELEASE_TAG}/ClaudeSwapBar-${CSWAPBAR_VERSION}.zip" \
+  "https://github.com/${GITHUB_REPOSITORY:-jx-grxf/cswap}/releases/download/${CSWAPBAR_RELEASE_TAG}/CSwap-${CSWAPBAR_VERSION}.zip" \
   "$CSWAPBAR_UPDATE_CHANNEL" \
   "$CSWAPBAR_VERSION" \
   "$CSWAPBAR_BUILD" \
@@ -43,7 +43,7 @@ fi
 
 (
   cd dist/sparkle
-  shasum -a 256 "ClaudeSwapBar-${CSWAPBAR_VERSION}.zip" appcast.xml
+  shasum -a 256 "CSwap-${CSWAPBAR_VERSION}.zip" appcast.xml
 ) > dist/SHA256SUMS
 
 echo "release artifacts ok"

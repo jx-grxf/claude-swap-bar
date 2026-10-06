@@ -5,17 +5,17 @@ import Foundation
 /// The endpoint enforces roughly 28–30 requests per hour per access token, so
 /// callers must cache results (AppState keeps snapshots and only refetches
 /// stale ones) and back off hard on 429.
-struct UsageService {
+public struct UsageService: Sendable {
 
-    static let usageURL = URL(string: "https://api.anthropic.com/api/oauth/usage")!
-    static let betaHeader = "oauth-2025-04-20"
+    public static let usageURL = URL(string: "https://api.anthropic.com/api/oauth/usage")!
+    public static let betaHeader = "oauth-2025-04-20"
 
-    enum UsageError: Error {
+    public enum UsageError: Error {
         case unauthorized
         case rateLimited(retryAfter: TimeInterval?)
         case network(String)
 
-        var asProblem: UsageProblem {
+        public var asProblem: UsageProblem {
             switch self {
             case .unauthorized:
                 return .unauthorized
@@ -27,7 +27,9 @@ struct UsageService {
         }
     }
 
-    func fetchUsage(accessToken: String) async throws -> UsageSnapshot {
+    public init() {}
+
+    public func fetchUsage(accessToken: String) async throws -> UsageSnapshot {
         var request = URLRequest(url: Self.usageURL)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue(Self.betaHeader, forHTTPHeaderField: "anthropic-beta")

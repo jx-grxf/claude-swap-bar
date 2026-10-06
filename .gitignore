@@ -3,5 +3,9 @@
 *.xcodeproj
 DerivedData/
 .DS_Store
-ClaudeSwapBar.app/
+CSwap.app/
 dist/
+
+# Local agent tooling
+AGENTS.md
+.codex/

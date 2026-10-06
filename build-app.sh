@@ -7,8 +7,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-APP_NAME="ClaudeSwapBar"
-BUNDLE_ID="me.johannesgrof.claudeswapbar"
+# Executable and SwiftPM target; the bundle itself is CSwap.app.
+APP_NAME="CSwapBar"
+BUNDLE_ID="me.johannesgrof.cswap"
 VERSION="${APP_VERSION:-$(tr -d '[:space:]' < VERSION)}"
 BUILD_NUMBER="${BUILD_NUMBER:-$(git rev-list --count HEAD 2>/dev/null || echo 1)}"
 SPARKLE_PUBLIC_KEY="${SPARKLE_PUBLIC_KEY:-+Rtqjb/eDLmt9i/NR3ol6BrFRjku/usKzGxQSXNmOSI=}"
@@ -21,12 +22,15 @@ BIN_DIR="$(swift build -c release --show-bin-path)"
 BIN="${BIN_DIR}/${APP_NAME}"
 RESOURCE_BUNDLE="${BIN_DIR}/${APP_NAME}_${APP_NAME}.bundle"
 SPARKLE_FRAMEWORK="${BIN_DIR}/Sparkle.framework"
-APP="${APP_NAME}.app"
+APP="CSwap.app"
 CONTENTS="${APP}/Contents"
 
 rm -rf "${APP}"
 mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Resources" "${CONTENTS}/Frameworks"
 cp "${BIN}" "${CONTENTS}/MacOS/${APP_NAME}"
+# The cswap command-line tool ships next to the app binary; `cswap setup`
+# links it to ~/.local/bin/cswap.
+cp "${BIN_DIR}/cswap" "${CONTENTS}/MacOS/cswap"
 
 if [ -d "${SPARKLE_FRAMEWORK}" ]; then
   cp -R "${SPARKLE_FRAMEWORK}" "${CONTENTS}/Frameworks/"
@@ -46,7 +50,11 @@ fi
 # Flatten SwiftPM resources into the standard macOS app resource directory.
 # MenuBarIcon checks Bundle.main first and falls back to Bundle.module when the
 # executable is launched directly during SwiftPM development.
-if [ -d "${RESOURCE_BUNDLE}" ]; then
+# Newer SwiftPM toolchains emit a full bundle (Contents/Resources/…) instead
+# of a flat folder; copy the resources themselves either way.
+if [ -d "${RESOURCE_BUNDLE}/Contents/Resources" ]; then
+  cp -R "${RESOURCE_BUNDLE}/Contents/Resources/." "${CONTENTS}/Resources/"
+elif [ -d "${RESOURCE_BUNDLE}" ]; then
   cp -R "${RESOURCE_BUNDLE}/." "${CONTENTS}/Resources/"
 else
   echo "Missing SwiftPM resource bundle: ${RESOURCE_BUNDLE}" >&2
@@ -60,8 +68,8 @@ cat > "${CONTENTS}/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key><string>${APP_NAME}</string>
-    <key>CFBundleDisplayName</key><string>Claude Swap</string>
+    <key>CFBundleName</key><string>CSwap</string>
+    <key>CFBundleDisplayName</key><string>CSwap</string>
     <key>CFBundleIdentifier</key><string>${BUNDLE_ID}</string>
     <key>CFBundleExecutable</key><string>${APP_NAME}</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
@@ -72,7 +80,7 @@ cat > "${CONTENTS}/Info.plist" <<PLIST
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSHumanReadableCopyright</key><string>© 2026 Johannes Grof</string>
-    <key>SUFeedURL</key><string>https://github.com/jx-grxf/claude-swap-bar/releases/latest/download/appcast.xml</string>
+    <key>SUFeedURL</key><string>https://github.com/jx-grxf/cswap/releases/latest/download/appcast.xml</string>
     <key>SUPublicEDKey</key><string>${SPARKLE_PUBLIC_KEY}</string>
     <key>SUEnableInstallerLauncherService</key><true/>
     <key>SUEnableAutomaticChecks</key><true/>
@@ -87,6 +95,7 @@ SIGN_TARGETS=(
   "${SPARKLE}/Versions/B/XPCServices/Installer.xpc"
   "${SPARKLE}/Versions/B/Autoupdate"
   "${SPARKLE}/Versions/B/Updater.app"
+  "${CONTENTS}/MacOS/cswap"
 )
 
 if [ "${SIGN_IDENTITY}" = "-" ]; then

@@ -14,17 +14,17 @@ case "$CSWAPBAR_UPDATE_CHANNEL" in
   *) echo "error: update channel must be stable or beta" >&2; exit 2 ;;
 esac
 
-APP="dist/ClaudeSwapBar.app"
+APP="dist/CSwap.app"
 if [[ ! -d "$APP" ]]; then
   echo "error: $APP not found" >&2
   exit 1
 fi
 
 mkdir -p dist/sparkle
-ZIP="dist/sparkle/ClaudeSwapBar-${CSWAPBAR_VERSION}.zip"
+ZIP="dist/sparkle/CSwap-${CSWAPBAR_VERSION}.zip"
 rm -f "$ZIP"
-(cd dist && /usr/bin/ditto -c -k --sequesterRsrc --keepParent ClaudeSwapBar.app \
-  "sparkle/ClaudeSwapBar-${CSWAPBAR_VERSION}.zip")
+(cd dist && /usr/bin/ditto -c -k --sequesterRsrc --keepParent CSwap.app \
+  "sparkle/CSwap-${CSWAPBAR_VERSION}.zip")
 
 find_sign_update() {
   local root sign
@@ -62,7 +62,7 @@ fi
 
 LENGTH="$(stat -f%z "$ZIP")"
 PUBDATE="$(LC_ALL=en_US date -u '+%a, %d %b %Y %H:%M:%S +0000')"
-DOWNLOAD_URL="${CSWAPBAR_SPARKLE_DOWNLOAD_PREFIX%/}/ClaudeSwapBar-${CSWAPBAR_VERSION}.zip"
+DOWNLOAD_URL="${CSWAPBAR_SPARKLE_DOWNLOAD_PREFIX%/}/CSwap-${CSWAPBAR_VERSION}.zip"
 NOTES_FILE="release-notes/v${CSWAPBAR_VERSION}.md"
 
 DESCRIPTION_HTML=""
@@ -100,12 +100,12 @@ cat > dist/sparkle/appcast.xml <<EOF
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
   <channel>
-    <title>Claude Swap Bar</title>
-    <link>https://github.com/jx-grxf/claude-swap-bar</link>
-    <description>Claude Swap Bar ${CSWAPBAR_UPDATE_CHANNEL} update feed</description>
+    <title>CSwap</title>
+    <link>https://github.com/jx-grxf/cswap</link>
+    <description>CSwap ${CSWAPBAR_UPDATE_CHANNEL} update feed</description>
     <language>en</language>
     <item>
-      <title>Claude Swap Bar ${CSWAPBAR_VERSION}</title>
+      <title>CSwap ${CSWAPBAR_VERSION}</title>
 ${DESCRIPTION_BLOCK}
 ${CHANNEL_BLOCK}
       <sparkle:version>${CSWAPBAR_BUILD}</sparkle:version>

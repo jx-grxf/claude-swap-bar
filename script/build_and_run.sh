@@ -2,10 +2,10 @@
 set -euo pipefail
 
 MODE="${1:-run}"
-APP_NAME="ClaudeSwapBar"
-BUNDLE_ID="me.johannesgrof.claudeswapbar"
+APP_NAME="CSwapBar"
+BUNDLE_ID="me.johannesgrof.cswap"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_BUNDLE="$ROOT_DIR/$APP_NAME.app"
+APP_BUNDLE="$ROOT_DIR/CSwap.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 
 case "$MODE" in

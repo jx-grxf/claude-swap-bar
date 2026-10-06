@@ -128,7 +128,7 @@ jobs:
         run: |
           ./build-app.sh
           mkdir -p dist
-          cp -R ClaudeSwapBar.app dist/ClaudeSwapBar.app
+          cp -R CSwap.app dist/CSwap.app
 
       - name: Notarize and staple app
         env:
@@ -138,7 +138,7 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc-key.p8"
-          ditto -c -k --keepParent dist/ClaudeSwapBar.app "$RUNNER_TEMP/notarize.zip"
+          ditto -c -k --keepParent dist/CSwap.app "$RUNNER_TEMP/notarize.zip"
           xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
             --key "$RUNNER_TEMP/asc-key.p8" \
             --key-id "$ASC_KEY_ID" \
@@ -146,8 +146,8 @@ jobs:
             --wait
           unlink "$RUNNER_TEMP/asc-key.p8"
           unlink "$RUNNER_TEMP/notarize.zip"
-          xcrun stapler staple dist/ClaudeSwapBar.app
-          spctl --assess --type execute --verbose dist/ClaudeSwapBar.app
+          xcrun stapler staple dist/CSwap.app
+          spctl --assess --type execute --verbose dist/CSwap.app
 
       - name: Build signed Sparkle feed
         env:
@@ -178,25 +178,25 @@ jobs:
           set -euo pipefail
           notes="release-notes/$RELEASE_TAG.md"
           assets=(
-            "dist/sparkle/ClaudeSwapBar-${RELEASE_VERSION}.zip#ClaudeSwapBar-${RELEASE_VERSION}.zip"
+            "dist/sparkle/CSwap-${RELEASE_VERSION}.zip#CSwap-${RELEASE_VERSION}.zip"
             "dist/sparkle/appcast.xml#appcast.xml"
             "dist/SHA256SUMS#SHA256SUMS"
           )
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             if [[ "$RELEASE_CHANNEL" == "beta" ]]; then
-              gh release edit "$RELEASE_TAG" --title "Claude Swap Bar $RELEASE_VERSION" \
+              gh release edit "$RELEASE_TAG" --title "CSwap $RELEASE_VERSION" \
                 --notes-file "$notes" --prerelease --latest=false
             else
-              gh release edit "$RELEASE_TAG" --title "Claude Swap Bar $RELEASE_VERSION" \
+              gh release edit "$RELEASE_TAG" --title "CSwap $RELEASE_VERSION" \
                 --notes-file "$notes" --prerelease=false --latest
             fi
             gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
           elif [[ "$RELEASE_CHANNEL" == "beta" ]]; then
             gh release create "$RELEASE_TAG" "${assets[@]}" --verify-tag \
-              --title "Claude Swap Bar $RELEASE_VERSION" --notes-file "$notes" --prerelease
+              --title "CSwap $RELEASE_VERSION" --notes-file "$notes" --prerelease
           else
             gh release create "$RELEASE_TAG" "${assets[@]}" --verify-tag \
-              --title "Claude Swap Bar $RELEASE_VERSION" --notes-file "$notes" --latest
+              --title "CSwap $RELEASE_VERSION" --notes-file "$notes" --latest
           fi
 
       - name: Publish moving beta feed
@@ -206,11 +206,11 @@ jobs:
         run: |
           set -euo pipefail
           if gh release view beta >/dev/null 2>&1; then
-            gh release edit beta --prerelease --latest=false --title "Claude Swap Bar Beta Feed"
+            gh release edit beta --prerelease --latest=false --title "CSwap Beta Feed"
             gh release upload beta "dist/sparkle/appcast.xml#appcast.xml" --clobber
           else
             gh release create beta "dist/sparkle/appcast.xml#appcast.xml" \
-              --title "Claude Swap Bar Beta Feed" \
+              --title "CSwap Beta Feed" \
               --notes "Moving Sparkle beta feed. Install builds from the versioned prereleases." \
               --prerelease
           fi
@@ -223,7 +223,7 @@ jobs:
         run: |
           set -euo pipefail
           release="$(gh release view "$RELEASE_TAG" --json assets,url)"
-          for name in "ClaudeSwapBar-${RELEASE_VERSION}.zip" appcast.xml SHA256SUMS; do
+          for name in "CSwap-${RELEASE_VERSION}.zip" appcast.xml SHA256SUMS; do
             size="$(jq -r --arg name "$name" '.assets[] | select(.name == $name) | .size' <<< "$release")"
             [[ "$size" =~ ^[1-9][0-9]*$ ]] || { echo "error: missing asset $name" >&2; exit 1; }
           done

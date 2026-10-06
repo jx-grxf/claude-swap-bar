@@ -20,7 +20,7 @@ enum MenuBarIcon {
               let img = NSImage(contentsOf: url), img.isValid else {
             let fallback = NSImage(
                 systemSymbolName: "gauge.with.needle",
-                accessibilityDescription: "Claude Swap Bar"
+                accessibilityDescription: "CSwap"
             ) ?? NSImage()
             fallback.isTemplate = true
             return fallback

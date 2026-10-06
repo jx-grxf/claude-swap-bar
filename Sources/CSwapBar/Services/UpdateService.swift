@@ -138,7 +138,7 @@ private final class UpdaterDelegate: NSObject, SPUUpdaterDelegate {
         return stableFeed?.replacingOccurrences(
             of: "releases/latest/download",
             with: "releases/download/beta"
-        ) ?? "https://github.com/jx-grxf/claude-swap-bar/releases/download/beta/appcast.xml"
+        ) ?? "https://github.com/jx-grxf/cswap/releases/download/beta/appcast.xml"
     }
 
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
