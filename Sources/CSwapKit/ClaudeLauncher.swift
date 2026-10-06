@@ -15,12 +15,17 @@ public enum ClaudeLauncher {
     /// default location for shells that don't have it on PATH.
     public static func claudeExecutable(environment: [String: String] = ProcessInfo.processInfo.environment) -> String? {
         // Tests point this at a stand-in so they never start a real login.
-        if let override = environment["CSEAT_CLAUDE"], !override.isEmpty {
+        if let override = environment["CSWAP_CLAUDE"], !override.isEmpty {
             return FileManager.default.isExecutableFile(atPath: override) ? override : nil
         }
         let home = NSHomeDirectory()
         let pathEntries = (environment["PATH"] ?? "").split(separator: ":").map(String.init)
-        let candidates = pathEntries + ["\(home)/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"]
+        // Apps started from Finder get a minimal PATH; also try where the
+        // native installer, Homebrew, npm and bun put `claude`.
+        let candidates = pathEntries + [
+            "\(home)/.local/bin", "\(home)/.claude/local", "/opt/homebrew/bin", "/usr/local/bin",
+            "\(home)/.npm-global/bin", "\(home)/.bun/bin",
+        ]
         for dir in candidates where !dir.isEmpty {
             let path = (dir as NSString).appendingPathComponent("claude")
             if FileManager.default.isExecutableFile(atPath: path) { return path }

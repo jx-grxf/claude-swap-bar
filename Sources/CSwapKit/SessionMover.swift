@@ -19,17 +19,17 @@ public struct SessionMover {
         public var errorDescription: String? {
             switch self {
             case .notInSession:
-                return "Run this inside a Claude Code session: type /swap there (or !cseat move <name>)."
+                return "Run this inside a Claude Code session: type /swap there (or !cswap move <name>)."
             case .noClaudeProcess:
                 return "Couldn't find the Claude Code process of this session."
             case let .sameSeat(slug):
                 return "This session already runs with \(slug)."
             case let .sameAccount(slug, email):
-            return "\(slug) is logged in to the same account (\(email)), so there's nothing to switch to. Log it in with its own account: cseat login \(slug) --email <address>"
+            return "\(slug) is logged in to the same account (\(email)), so there's nothing to switch to. Log it in with its own account: cswap login \(slug) --email <address>"
         case let .notLoggedIn(slug):
-                return "\(slug) isn't logged in yet. Run: cseat login \(slug)"
+                return "\(slug) isn't logged in yet. Run: cswap login \(slug)"
             case .noOtherSeat:
-                return "There's no other logged-in account to move to. Add one with: cseat add <name>"
+                return "There's no other logged-in account to move to. Add one with: cswap add <name>"
             }
         }
     }
@@ -96,8 +96,8 @@ public struct SessionMover {
     }
 
     /// Ends this session's Claude Code process and resumes the conversation
-    /// in `target`. `cseatPath` is used for the new-window fallback.
-    public func move(to target: Seat, cseatPath: String) throws -> Handoff {
+    /// in `target`. `cliPath` is used for the new-window fallback.
+    public func move(to target: Seat, cliPath: String) throws -> Handoff {
         try checkDifferentAccount(target)
         guard let sessionID = environment["CLAUDE_CODE_SESSION_ID"], !sessionID.isEmpty else {
             throw MoveError.notInSession
@@ -107,16 +107,16 @@ public struct SessionMover {
         }
         return try handOff(
             claude: claude, sessionID: sessionID,
-            shellPID: environment["CSEAT_SHELL_PID"].flatMap(Int32.init),
+            shellPID: Self.shellPID(in: environment),
             workingDirectory: ProcessTable.workingDirectory(of: claude.pid),
-            to: target, cseatPath: cseatPath
+            to: target, cliPath: cliPath
         )
     }
 
     /// Moves a session from outside it, as the menu bar app does. The
     /// handoff is the same as `/swap`: the tab's `claude()` wrapper restarts
     /// it when the wrapper started it, otherwise a new window resumes it.
-    public func move(_ session: RunningSession, to target: Seat, cseatPath: String) throws -> Handoff {
+    public func move(_ session: RunningSession, to target: Seat, cliPath: String) throws -> Handoff {
         guard let source = store.seat(named: session.seatSlug) else {
             throw SeatStore.SeatError.notFound(session.seatSlug)
         }
@@ -130,23 +130,29 @@ public struct SessionMover {
         }
         return try handOff(
             claude: claude, sessionID: session.sessionId,
-            shellPID: ProcessTable.environment(of: claude.pid)["CSEAT_SHELL_PID"].flatMap(Int32.init),
+            shellPID: Self.shellPID(in: ProcessTable.environment(of: claude.pid)),
             workingDirectory: session.cwd ?? ProcessTable.workingDirectory(of: claude.pid),
-            to: target, cseatPath: cseatPath
+            to: target, cliPath: cliPath
         )
     }
 
-    /// How `move(_:to:cseatPath:)` would continue `session`.
+    /// PID of the shell whose wrapper started a session; sessions from
+    /// before the rename carry the old variable name.
+    static func shellPID(in environment: [String: String]) -> Int32? {
+        (environment["CSWAP_SHELL_PID"] ?? environment["CSEAT_SHELL_PID"]).flatMap(Int32.init)
+    }
+
+    /// How `move(_:to:cliPath:)` would continue `session`.
     public func handoffKind(for session: RunningSession) -> Handoff {
         guard let claude = ProcessTable.current().entries[session.pid],
-              let shellPID = ProcessTable.environment(of: session.pid)["CSEAT_SHELL_PID"].flatMap(Int32.init),
+              let shellPID = Self.shellPID(in: ProcessTable.environment(of: session.pid)),
               claude.ppid == shellPID else { return .newWindow }
         return .sameTab
     }
 
     private func handOff(
         claude: ProcessTable.Entry, sessionID: String, shellPID: Int32?,
-        workingDirectory: String?, to target: Seat, cseatPath: String
+        workingDirectory: String?, to target: Seat, cliPath: String
     ) throws -> Handoff {
         let resume = ["--resume", sessionID]
 
@@ -159,8 +165,8 @@ public struct SessionMover {
             // reopened. Run through the shell integration when it exists, so
             // a later /swap in that window stays in the same tab.
             let next = ([target.slug, "--"] + resume).map(TerminalLauncher.shellQuoted).joined(separator: " ")
-            let command = "sleep 2; if typeset -f _cseat_session >/dev/null; then _cseat_session \(next); "
-                + "else \(TerminalLauncher.shellQuoted(cseatPath)) run \(next); fi"
+            let command = "sleep 2; if typeset -f _cswap_session >/dev/null; then _cswap_session \(next); "
+                + "else \(TerminalLauncher.shellQuoted(cliPath)) run \(next); fi"
             try TerminalLauncher.run(command, workingDirectory: workingDirectory)
             handoff = .newWindow
         }

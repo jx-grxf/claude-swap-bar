@@ -1,4 +1,4 @@
-import SeatKit
+import CSwapKit
 import SwiftUI
 
 struct AccountRowView: View {

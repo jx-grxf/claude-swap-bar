@@ -1,5 +1,5 @@
 import Foundation
-import SeatKit
+import CSwapKit
 import SwiftUI
 
 /// What the menu shows for one seat.
@@ -63,7 +63,7 @@ final class AppState: ObservableObject {
         startWatching()
     }
 
-    /// Follows what `cseat` and Claude Code change on disk.
+    /// Follows what `cswap` and Claude Code change on disk.
     private func startWatching() {
         let watcher = SeatWatcher(
             seatsRoot: store.root,
@@ -96,7 +96,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Picks up usage `cseat` fetched, when it is newer than ours.
+    /// Picks up usage `cswap` fetched, when it is newer than ours.
     private func mergeCachedUsage() {
         for (slug, snapshot) in UsageCache.load() where (usage[slug]?.fetchedAt ?? .distantPast) < snapshot.fetchedAt {
             guard let info = seats.first(where: { $0.id == slug }), snapshot.belongs(to: info.email) else { continue }
@@ -109,8 +109,8 @@ final class AppState: ObservableObject {
     /// app update also updates them.
     private func refreshShellIntegration() {
         guard isShellIntegrationInstalled else { return }
-        let linked = store.home.appendingPathComponent(".local/bin/cseat").path
-        try? store.writeShellInit(cseatPath: linked)
+        let linked = store.home.appendingPathComponent(".local/bin/cswap").path
+        try? ShellIntegration(store: store).writeScript(cliPath: linked)
         _ = try? store.installSwapCommand()
     }
 
@@ -136,8 +136,7 @@ final class AppState: ObservableObject {
             usage[info.id] = nil
         }
         defaultSlug = store.defaultSeat().slug
-        isShellIntegrationInstalled = Self.zshrcSourcesIntegration(home: store.home)
-            && FileManager.default.fileExists(atPath: store.shellInitURL.path)
+        isShellIntegrationInstalled = ShellIntegration(store: store).isInstalled
     }
 
     // MARK: - Usage
@@ -273,16 +272,16 @@ final class AppState: ObservableObject {
     func logIn(_ seat: Seat, email: String? = nil) {
         var arguments = ["login", seat.slug]
         if let email, !email.isEmpty { arguments += ["--email", email] }
-        runCSeatInTerminal(arguments)
+        runCLIInTerminal(arguments)
     }
 
     /// Starts the seat through the shell integration when it's installed,
     /// so `/swap` in that window restarts in the same tab.
     func openSession(_ info: SeatInfo) {
         let slug = TerminalLauncher.shellQuoted(info.id)
-        let fallback = cseatCommand([info.id])
+        let fallback = cliCommand([info.id])
         guard let fallback else { return }
-        let command = "if typeset -f _cseat_session >/dev/null; then _cseat_session \(slug) --; else \(fallback); fi"
+        let command = "if typeset -f _cswap_session >/dev/null; then _cswap_session \(slug) --; else \(fallback); fi"
         do {
             try TerminalLauncher.run(command)
         } catch {
@@ -292,10 +291,10 @@ final class AppState: ObservableObject {
 
     /// Moves a running session to `target`, the same way `/swap` does.
     func move(_ session: RunningSession, to target: SeatInfo) {
-        let cseatPath = store.home.appendingPathComponent(".local/bin/cseat").path
-        let cli = FileManager.default.isExecutableFile(atPath: cseatPath) ? cseatPath : (Self.bundledCLI?.path ?? cseatPath)
+        let cliPath = store.home.appendingPathComponent(".local/bin/cswap").path
+        let cli = FileManager.default.isExecutableFile(atPath: cliPath) ? cliPath : (Self.bundledCLI?.path ?? cliPath)
         do {
-            let handoff = try SessionMover(store: store).move(session, to: target.seat, cseatPath: cli)
+            let handoff = try SessionMover(store: store).move(session, to: target.seat, cliPath: cli)
             let place = handoff == .sameTab ? "in its tab" : "in a new terminal window"
             lastAction = "\(session.title) continues with \(target.email ?? target.title) \(place)"
             errorMessage = nil
@@ -332,22 +331,22 @@ final class AppState: ObservableObject {
 
     // MARK: - Command-line tool
 
-    /// The `cseat` binary shipped inside the app bundle.
+    /// The `cswap` binary shipped inside the app bundle.
     static var bundledCLI: URL? {
-        let url = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/cseat")
+        let url = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/cswap")
         return FileManager.default.isExecutableFile(atPath: url.path) ? url : nil
     }
 
-    /// Links `~/.local/bin/cseat`, writes the zsh snippet and sources it from
-    /// `~/.zshrc`, by running the bundled `cseat setup`.
+    /// Links `~/.local/bin/cswap` and loads the shell integration from the
+    /// shell's startup file, by running the bundled `cswap setup --yes`.
     func installShellIntegration() {
         guard let cli = Self.bundledCLI else {
-            errorMessage = "The cseat tool is missing from the app bundle."
+            errorMessage = "The cswap tool is missing from the app bundle."
             return
         }
         let process = Process()
         process.executableURL = cli
-        process.arguments = ["setup"]
+        process.arguments = ["setup", "--yes"]
         let errors = Pipe()
         process.standardOutput = FileHandle.nullDevice
         process.standardError = errors
@@ -355,11 +354,11 @@ final class AppState: ObservableObject {
             try process.run()
             process.waitUntilExit()
             if process.terminationStatus == 0 {
-                lastAction = "Shell integration installed — open a new terminal"
+                lastAction = "cswap is set up — open a new terminal tab"
                 errorMessage = nil
             } else {
                 let message = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-                errorMessage = message.isEmpty ? "cseat setup failed." : message
+                errorMessage = message.isEmpty ? "cswap setup failed." : message
             }
         } catch {
             errorMessage = friendlyMessage(error)
@@ -367,29 +366,24 @@ final class AppState: ObservableObject {
         reload()
     }
 
-    /// Shell command running `cseat` with `arguments`; prefers the stable
+    /// Shell command running `cswap` with `arguments`; prefers the stable
     /// link so terminals show a short command.
-    private func cseatCommand(_ arguments: [String]) -> String? {
-        let linked = store.home.appendingPathComponent(".local/bin/cseat").path
+    private func cliCommand(_ arguments: [String]) -> String? {
+        let linked = store.home.appendingPathComponent(".local/bin/cswap").path
         guard let cli = FileManager.default.isExecutableFile(atPath: linked) ? linked : Self.bundledCLI?.path else {
-            errorMessage = "The cseat tool is missing from the app bundle."
+            errorMessage = "The cswap tool is missing from the app bundle."
             return nil
         }
         return ([cli] + arguments).map(TerminalLauncher.shellQuoted).joined(separator: " ")
     }
 
-    private func runCSeatInTerminal(_ arguments: [String]) {
-        guard let command = cseatCommand(arguments) else { return }
+    private func runCLIInTerminal(_ arguments: [String]) {
+        guard let command = cliCommand(arguments) else { return }
         do {
             try TerminalLauncher.run(command)
         } catch {
             errorMessage = friendlyMessage(error)
         }
-    }
-
-    private static func zshrcSourcesIntegration(home: URL) -> Bool {
-        let zshrc = (try? String(contentsOf: home.appendingPathComponent(".zshrc"), encoding: .utf8)) ?? ""
-        return zshrc.contains(SeatStore.shellSourceLine)
     }
 
     // MARK: - Helpers

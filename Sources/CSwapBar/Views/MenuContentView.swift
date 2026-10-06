@@ -1,4 +1,4 @@
-import SeatKit
+import CSwapKit
 import SwiftUI
 
 struct MenuContentView: View {
@@ -45,7 +45,7 @@ struct MenuContentView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
 
             VStack(alignment: .leading, spacing: 1) {
-                Text("Claude Swap")
+                Text("CSwap")
                     .font(.headline)
                 Text(store.defaultSeat.map { "New sessions: \($0.email ?? $0.title)" } ?? "No default account")
                     .font(.caption)
@@ -88,14 +88,14 @@ struct MenuContentView: View {
             Image(systemName: "terminal")
                 .foregroundStyle(Color.accentColor)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Let plain `claude` follow the default")
+                Text("Set up cswap once")
                     .font(.caption.weight(.semibold))
-                Text("Installs the `cseat` command and one line in ~/.zshrc.")
+                Text("Adds the `cswap` command and one line to your shell's startup file.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Install") {
+            Button("Set Up") {
                 store.installShellIntegration()
             }
             .buttonStyle(.borderedProminent)
@@ -150,7 +150,7 @@ struct MenuContentView: View {
         Button {
             showAddSheet = true
         } label: {
-            Label("Add another Claude account", systemImage: "plus.circle")
+            Label("Add another account", systemImage: "plus.circle")
                 .font(.callout)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)
@@ -233,7 +233,7 @@ struct MenuContentView: View {
                     Image(systemName: "power")
                 }
                 .buttonStyle(.borderless)
-                .help("Quit Claude Swap Bar")
+                .help("Quit CSwap")
                 .accessibilityLabel("Quit")
             }
             .font(.caption)

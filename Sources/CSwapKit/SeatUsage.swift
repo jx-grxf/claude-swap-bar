@@ -29,12 +29,12 @@ public struct SeatUsageFetcher: Sendable {
     }
 }
 
-/// Usage snapshots per seat slug, shared by the menu bar app and `cseat` so
+/// Usage snapshots per seat slug, shared by the menu bar app and `cswap` so
 /// neither burns the ~30 requests/hour budget the other already spent.
 public enum UsageCache {
     public static var url: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("ClaudeSwapBar/seat-usage.json")
+            .appendingPathComponent("CSwap/usage.json")
     }
 
     public static func load() -> [String: UsageSnapshot] {

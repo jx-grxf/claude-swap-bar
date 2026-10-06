@@ -1,6 +1,6 @@
 import AppKit
 import Combine
-import SeatKit
+import CSwapKit
 import SwiftUI
 
 /// Creates a new account folder and starts its browser login in a terminal.
@@ -28,7 +28,7 @@ struct AddAccountSheet: View {
                     .interpolation(.high)
                     .frame(width: 28, height: 28)
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                Text("Add a Claude Account")
+                Text("Add an Account")
                     .font(.title3.weight(.semibold))
                 Spacer()
             }
@@ -74,7 +74,7 @@ struct AddAccountSheet: View {
                 TextField("you@example.com", text: $email)
                     .textFieldStyle(.roundedBorder)
             }
-            Text("The short name is what you type in the terminal: `cseat \(name.isEmpty ? "work" : name)`.")
+            Text("The short name is what you type in the terminal: `cswap \(name.isEmpty ? "work" : name)`.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -108,7 +108,7 @@ struct AddAccountSheet: View {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                 }
-                Text("Start it with `cseat \(info.title)`, or click the account to use it for new sessions.")
+                Text("Start it with `cswap \(info.title)`, or click the account to use it for new sessions.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
@@ -117,7 +117,7 @@ struct AddAccountSheet: View {
                     Text("Finish the login in the browser window that just opened.")
                         .font(.callout)
                 }
-                Text("A terminal runs `cseat login \(info.title)`. If the browser didn't open, the terminal shows the link.")
+                Text("A terminal runs `cswap login \(info.title)`. If the browser didn't open, the terminal shows the link.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

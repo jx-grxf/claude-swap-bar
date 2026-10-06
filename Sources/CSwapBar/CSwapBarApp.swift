@@ -2,7 +2,7 @@ import ServiceManagement
 import SwiftUI
 
 @main
-struct ClaudeSwapBarApp: App {
+struct CSwapBarApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @ObservedObject private var store = AppState.shared
 

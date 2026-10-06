@@ -1,14 +1,14 @@
 import CoreServices
 import Foundation
 
-/// Watches the folders `cseat` and Claude Code write to, so the menu follows
-/// `cseat use`, logins, new accounts and starting or ending sessions within
+/// Watches the folders `cswap` and Claude Code write to, so the menu follows
+/// `cswap use`, logins, new accounts and starting or ending sessions within
 /// a second instead of on the next timer tick.
 final class SeatWatcher {
     enum Change {
         /// Only session records changed: cheap to pick up.
         case sessions
-        /// Usage numbers fetched by `cseat`.
+        /// Usage numbers fetched by `cswap`.
         case usage
         /// Default account, accounts or logins changed.
         case seats

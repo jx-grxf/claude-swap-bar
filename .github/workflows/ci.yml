@@ -18,17 +18,17 @@ jobs:
         run: ./build-app.sh
       - name: Verify bundle
         run: |
-          test -x ClaudeSwapBar.app/Contents/MacOS/ClaudeSwapBar
-          test -x ClaudeSwapBar.app/Contents/MacOS/cseat
-          ClaudeSwapBar.app/Contents/MacOS/cseat help >/dev/null
-          test -f ClaudeSwapBar.app/Contents/Resources/AppIcon.icns
-          test -f ClaudeSwapBar.app/Contents/Resources/AppLogo.png
-          test -f ClaudeSwapBar.app/Contents/Resources/StatusIcon.svg
-          test -d ClaudeSwapBar.app/Contents/Frameworks/Sparkle.framework
-          test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' ClaudeSwapBar.app/Contents/Info.plist)" = "https://github.com/jx-grxf/claude-swap-bar/releases/latest/download/appcast.xml"
-          test -n "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' ClaudeSwapBar.app/Contents/Info.plist)"
-          codesign --verify --deep --strict ClaudeSwapBar.app
-          open -n ClaudeSwapBar.app
+          test -x CSwap.app/Contents/MacOS/CSwapBar
+          test -x CSwap.app/Contents/MacOS/cswap
+          CSwap.app/Contents/MacOS/cswap help >/dev/null
+          test -f CSwap.app/Contents/Resources/AppIcon.icns
+          test -f CSwap.app/Contents/Resources/AppLogo.png
+          test -f CSwap.app/Contents/Resources/StatusIcon.svg
+          test -d CSwap.app/Contents/Frameworks/Sparkle.framework
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' CSwap.app/Contents/Info.plist)" = "https://github.com/jx-grxf/cswap/releases/latest/download/appcast.xml"
+          test -n "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' CSwap.app/Contents/Info.plist)"
+          codesign --verify --deep --strict CSwap.app
+          open -n CSwap.app
           sleep 2
-          pgrep -x ClaudeSwapBar
-          pkill -x ClaudeSwapBar
+          pgrep -x CSwapBar
+          pkill -x CSwapBar

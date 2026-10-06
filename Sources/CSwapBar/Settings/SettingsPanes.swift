@@ -162,7 +162,7 @@ struct UpdateSettingsPane: View {
 }
 
 struct AboutSettingsPane: View {
-    private static let repoURL = URL(string: "https://github.com/jx-grxf/claude-swap-bar")!
+    private static let repoURL = URL(string: "https://github.com/jx-grxf/cswap")!
 
     var body: some View {
         Form {
@@ -175,13 +175,13 @@ struct AboutSettingsPane: View {
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .shadow(color: .black.opacity(0.2), radius: 8, y: 3)
 
-                    Text("Claude Swap Bar")
+                    Text("CSwap")
                         .font(.title2.weight(.semibold))
                     Text(AppVersion.displayString)
                         .font(.callout)
                         .foregroundStyle(.secondary)
 
-                    Text("Native multi-account switching and usage tracking for Claude Code.")
+                    Text("Run several Claude Code accounts side by side, with live usage.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -208,14 +208,19 @@ struct AboutSettingsPane: View {
 
             Section("How switching works") {
                 Text("""
-                Accounts are stored in this app's own vault (tokens in the macOS \
-                Keychain). Switching writes the selected account's credentials to \
-                the same places Claude Code reads them from — no external tools \
-                involved. A running Claude Code session picks the change up within \
-                about 30 seconds, or immediately after a restart.
+                Every account has its own configuration folder and logs in once. \
+                Switching starts Claude Code in another folder; no login is ever \
+                copied, refreshed or written back. /swap and Move end a session and \
+                continue the same conversation with the other account.
                 """)
                 .font(.callout)
                 .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Text("CSwap is an independent project, not affiliated with or endorsed by Anthropic. Claude and Claude Code are trademarks of Anthropic, PBC.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

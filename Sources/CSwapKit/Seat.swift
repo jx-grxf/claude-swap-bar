@@ -4,7 +4,7 @@ import Foundation
 /// One Claude Code account, isolated in its own configuration directory.
 ///
 /// The `main` seat is the plain `~/.claude` setup Claude Code uses without
-/// `CLAUDE_CONFIG_DIR`. Every other seat lives in `~/.claude-seats/<slug>` and
+/// `CLAUDE_CONFIG_DIR`. Every other seat lives in `~/.cswap/<slug>` and
 /// is launched with `CLAUDE_CONFIG_DIR` pointing there, which gives it its own
 /// login, its own `.claude.json` and its own Keychain item.
 public struct Seat: Identifiable, Hashable, Sendable {
@@ -95,7 +95,7 @@ public struct RunningSession: Identifiable, Hashable, Sendable, Decodable {
     }
 }
 
-/// Read-only view of a seat's OAuth credential. SeatKit never refreshes or
+/// Read-only view of a seat's OAuth credential. CSwapKit never refreshes or
 /// writes these — Claude Code owns the refresh-token lineage of every seat.
 public struct SeatCredentials: Sendable {
     public var accessToken: String
